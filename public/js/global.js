@@ -1,7 +1,12 @@
+// public/js/global.js
 const socket = io();
-window.myUserId = ""; 
-window.myNickname = ""; 
-window.isAdmin = false;
-window.myRoomId = "";
-window.playersData = [];
-window.entities = {}; // 3D 엔진과 UI가 공유할 캐릭터 데이터 [cite: 199]
+var myUserId = "", myNickname = "", isAdmin = false;
+var myRoomId = "", selectedRoomId = "", selectedRoomRequiresPw = false;
+var playersData = [];
+var initialRouteHandled = false;
+
+const affinityEmoji = { 'SPICY':'🌶️', 'GREASY':'🍗', 'FRESH':'🥗', 'SALTY':'🧂', 'SWEET':'🍰', 'MINT_CHOCO':'🌿', 'PINEAPPLE':'🍍' };
+
+// 3D 엔진과 UI가 실시간으로 공유할 데이터
+var entities = {};
+var meshMap = {};
