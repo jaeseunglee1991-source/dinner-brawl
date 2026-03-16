@@ -33,11 +33,11 @@ function openDict(type) {
     } else if(type === 'grade') {
         title.innerText = "⭐ 등급 도감";
         body.innerHTML = `
-            <span style="color:#bdc3c7">■ 일반 (Common) : 기본 스탯 (1.0배)</span><br><br>
-            <span style="color:#3498db">■ 희귀 (Rare) : 1.2배 스탯 증가</span><br><br>
-            <span style="color:#9b59b6">■ 영웅 (Epic) : 1.5배 스탯 증가</span><br><br>
-            <span style="color:#f1c40f">■ 전설 (Legendary) : 2.0배 스탯 증가</span><br><br>
-            <span style="color:#e74c3c">■ 신화 (Mythic) : 3.0배 스탯 증가!</span>
+            <span style="color:#bdc3c7">■ 일반 (Common) : 64% 출현</span><br><br>
+            <span style="color:#3498db">■ 희귀 (Rare) : 20% 출현 (1.2배 스탯)</span><br><br>
+            <span style="color:#9b59b6">■ 영웅 (Epic) : 10% 출현 (1.5배 스탯)</span><br><br>
+            <span style="color:#f1c40f">■ 전설 (Legendary) : 5% 출현 (2.0배 스탯)</span><br><br>
+            <span style="color:#e74c3c">■ 신화 (Mythic) : 1% 출현 (3.0배 스탯!)</span>
         `;
     } else if(type === 'affinity') {
         title.innerText = "🎭 상성 도감";
@@ -168,9 +168,29 @@ window.leaveRoomUI = function() {
 window.deleteRoom = function(id) { if(confirm('방을 강제 폭파하시겠습니까?')) socket.emit('deleteRoom', id); };
 window.reqDeleteRoom = function() { if(confirm('내 게임 방을 해체하시겠습니까?')) socket.emit('deleteRoom', myRoomId); };
 
-// ==========================================
-// 통신 및 UI 렌더링 핸들러 (리플레이와 공유하기 위해 분리)
-// ==========================================
+// 🛠️ 방 입장 시 잔여 데이터 완벽 클리어 로직
+window.clearBattleField = function() {
+    document.getElementById('logMessages').innerHTML = '';
+    document.getElementById('chatMessages').innerHTML = '';
+    document.getElementById('cardList').innerHTML = '';
+    document.getElementById('roundText').innerHTML = '대기 중...';
+    document.getElementById('playerCount').innerText = '';
+    document.getElementById('playerList').innerHTML = '';
+    document.getElementById('replayBtn').style.display = 'none';
+    
+    if (typeof scene !== 'undefined' && scene) {
+        Object.values(meshMap).forEach(mesh => scene.remove(mesh));
+    }
+    entities = {}; 
+    meshMap = {};
+    
+    isReplaying = false;
+    if(typeof replayTimeouts !== 'undefined') {
+        replayTimeouts.forEach(clearTimeout);
+        replayTimeouts = [];
+    }
+};
+
 window.handleUIUpdatePlayers = function(data) {
     playersData = data.players;
     document.getElementById('playerCount').innerText = `참가자: ${playersData.length}명`;
@@ -200,22 +220,24 @@ window.handleGameFinished = function(menu) {
     const logBox = document.getElementById('logMessages');
     logBox.innerHTML += `<div style="color:gold; font-size:16px; font-weight:bold; margin-top:10px;">🏆 게임 종료! 최종 우승 메뉴: ${menu} 🏆</div>`;
     logBox.scrollTop = logBox.scrollHeight;
-    document.getElementById('replayBtn').style.display = 'block'; // 종료 시 리플레이 노출
+    document.getElementById('replayBtn').style.display = 'block'; 
 };
 
-// 실시간 소켓 이벤트 수신 (리플레이 중이 아닐 때만)
 socket.on('updatePlayers', data => { if(!isReplaying) handleUIUpdatePlayers(data); });
 socket.on('battleLog', data => { if(!isReplaying) handleBattleLog(data); });
 socket.on('gameFinished', data => { if(!isReplaying) handleGameFinished(data); });
 
 socket.on('joined', (data) => {
     myRoomId = data.roomId; history.pushState(null, '', '?room=' + data.roomId);
+    
+    // 🛠️ 방 입장 시 잔상 클리어 함수 호출
+    clearBattleField(); 
+
     document.getElementById('startBtn').style.display = (data.isMaster && data.state === 'waiting') ? 'block' : 'none';
     document.getElementById('deleteBtn').style.display = data.isMaster ? 'block' : 'none'; 
     document.getElementById('copyLinkBtn').style.display = 'block'; document.getElementById('leaveBtn').style.display = 'block'; 
     document.getElementById('cancelBtn').style.display = (!data.isSpectator && data.state === 'waiting') ? 'block' : 'none';
     
-    // 📼 관전자로 참여했는데 이미 게임이 진행 중이거나 끝났다면 리플레이 버튼 노출
     if (data.isSpectator && data.state !== 'waiting') {
         document.getElementById('replayBtn').style.display = 'block';
     }
@@ -239,30 +261,19 @@ window.startGame = function() {
     document.getElementById('startBtn').style.display = 'none'; document.getElementById('copyLinkBtn').style.display = 'none'; document.getElementById('cancelBtn').style.display = 'none'; 
 }
 
-// ==========================================
-// 📼 리플레이 시스템
-// ==========================================
 window.requestReplay = function() {
     socket.emit('requestReplay', myRoomId);
 };
 
 socket.on('startReplay', (replayData) => {
     alert('📼 리플레이 재생을 시작합니다!');
-    
-    replayTimeouts.forEach(clearTimeout);
-    replayTimeouts = [];
+    clearBattleField(); 
     isReplaying = true;
-
-    // UI 및 3D 화면 리셋
-    document.getElementById('logMessages').innerHTML = '';
-    Object.values(meshMap).forEach(mesh => scene.remove(mesh));
-    entities = {}; meshMap = {};
 
     const initialData = { players: replayData.initialPlayers, masterId: replayData.masterId };
     handleUIUpdatePlayers(initialData);
     handle3DUpdatePlayers(initialData);
 
-    // 기록된 시간에 맞춰 이벤트 다시 실행
     replayData.history.forEach(item => {
         let tid = setTimeout(() => {
             if(item.event === 'updatePlayers') { handleUIUpdatePlayers(item.data); handle3DUpdatePlayers(item.data); }
