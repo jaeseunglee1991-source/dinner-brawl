@@ -6,7 +6,6 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// public 폴더를 웹에 노출 (HTML 파일 서비스용)
 app.use(express.static('public'));
 
 const rooms = {};
@@ -62,7 +61,6 @@ function generateDeck(playerName, menus) {
         deck.push({ menu: menus[0], owner: playerName, hp: totalHp, atk: totalAtk, affinity: getRandomItem(AFFINITIES), skills: [getRandomItem(SKILLS), getRandomItem(SKILLS)], isAlive: true });
     }
 
-    // 스킬 사전 패널티 적용
     deck.forEach(card => {
         const has = (skillName) => card.skills.some(s => s.name === skillName);
         if (has('WEAK')) card.hp -= 10;
@@ -79,15 +77,17 @@ async function runBattle(roomId) {
     const room = rooms[roomId];
     let players = room.players;
     
+    // UI 좌측 카드 목록의 실시간 동기화를 위해 로그 방출 시마다 updatePlayers 이벤트도 함께 쏩니다.
     const sendLog = async (msg) => {
         io.to(roomId).emit('battleLog', msg);
+        io.to(roomId).emit('updatePlayers', Object.values(rooms[roomId].players));
         await new Promise(r => setTimeout(r, 800)); // 0.8초 딜레이
     };
 
     await sendLog("=== ⚔️ <b>저녁 메뉴 난투를 시작합니다!</b> ⚔️ ===");
     const getAliveTeams = () => Object.values(players).filter(p => p.deck.some(c => c.isAlive));
     
-    // Phase 1: 팀 간 전투
+    // Phase 1
     let round = 1;
     while (getAliveTeams().length > 1) {
         await sendLog(`<br><b>--- [Round ${round}] ---</b>`);
@@ -104,7 +104,7 @@ async function runBattle(roomId) {
         round++;
     }
 
-    // Phase 2: 팀 내 결승전
+    // Phase 2
     const winnerTeam = getAliveTeams()[0];
     if (winnerTeam) {
         await sendLog(`<br>🎉 <b>[${winnerTeam.name}] 팀의 메뉴가 우승했습니다!</b> 🎉`);
@@ -200,6 +200,9 @@ io.on('connection', (socket) => {
         
         socket.emit('joined', { isMaster: rooms[roomId].master === socket.id });
         io.to(roomId).emit('systemLog', `🔔 ${playerName}님이 입장하여 메뉴를 제출했습니다. (현재 ${Object.keys(rooms[roomId].players).length}명)`);
+        
+        // 누군가 접속할 때마다 전체 덱 정보를 뿌려 UI 갱신
+        io.to(roomId).emit('updatePlayers', Object.values(rooms[roomId].players));
     });
 
     socket.on('startGame', (roomId) => {
