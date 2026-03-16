@@ -1,3 +1,5 @@
+// public/js/3d/setup.js
+
 canvas = document.getElementById('gameCanvas');
 scene = new THREE.Scene();
 camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
@@ -16,7 +18,8 @@ mainLight.shadow.mapSize.width = 1024;
 mainLight.shadow.mapSize.height = 1024;
 scene.add(mainLight);
 
-camera.position.set(0, 22, 25);
+// 🎥 수정됨: 카메라를 더 높이 올리고 (Y: 30), 앞당겨서(Z: 20) 탑다운 뷰 강화
+camera.position.set(0, 30, 20);
 camera.lookAt(0, 0, 0);
 
 environmentGroup = new THREE.Group();
