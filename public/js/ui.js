@@ -3,15 +3,18 @@
 function showScreen(id) {
     document.querySelectorAll('.screen, #screen-game').forEach(el => el.classList.remove('active'));
     document.getElementById(id).classList.add('active');
+    // 화면 변경 후 캔버스 리사이즈 
     if(id === 'screen-game') { setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }
 }
 
 function toggleRightPanel() {
     const rp = document.getElementById('rightPanel');
     rp.classList.toggle('minimized');
-    setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+    // 패널 접기/펴기 후 캔버스 찌그러짐 방지
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
 }
 
+// 상성과 기술 도감 분리
 function openDict(type) {
     const title = document.getElementById('modalTitle');
     const body = document.getElementById('modalBody');
@@ -39,14 +42,21 @@ function openDict(type) {
             <span style="color:#f1c40f">■ 전설 (Legendary) : 2.0배 스탯 증가</span><br><br>
             <span style="color:#e74c3c">■ 신화 (Mythic) : 3.0배 스탯 증가!</span>
         `;
-    } else if(type === 'skill') {
-        title.innerText = "🔥 상성 및 기술 도감";
+    } else if(type === 'affinity') {
+        title.innerText = "🎭 상성 도감";
         body.innerHTML = `
-            <b style="color:#e74c3c">매콤</b> > 느끼 > 깔끔 > 짭짤 > 달콤 > 매콤<br>
-            <b style="color:#3498db">⭐특수(민트초코, 파인애플):</b> 일반 공격시 2배 데미지, 같은 특수끼리 만나면 세계관 붕괴(즉사)<br>
-            <hr>
+            <b style="color:#e74c3c">매콤</b> > <b style="color:#f39c12">느끼</b> > <b style="color:#2ecc71">깔끔</b> > <b style="color:#3498db">짭짤</b> > <b style="color:#9b59b6">달콤</b> > <b style="color:#e74c3c">매콤</b><br><br>
+            <b style="color:#1abc9c">⭐특수(민트초코, 파인애플):</b><br>
+            - 일반 속성 공격 시 <b>2배 데미지</b><br>
+            - 같은 특수 속성끼리 만나면 <b>세계관 붕괴 (즉사)</b>
+        `;
+    } else if(type === 'skill') {
+        title.innerText = "✨ 특수기술 도감";
+        body.innerHTML = `
             각 카드는 생성 시 <b>랜덤으로 1개의 특수기술</b>을 부여받습니다.<br>
-            우측 <b>카드 정보 판</b>에서 자신의 카드를 클릭해 확인하세요!
+            우측 <b>카드 정보 판</b>에서 자신의 카드를 클릭해 확인하세요!<br><br>
+            <b>[버프 예시]</b> 크리티컬, 흡혈, 더블어택, 자이언트킬러, 럭키, 가디언 등<br>
+            <b>[디버프 예시]</b> 덜렁이, 허약, 겁쟁이, 게으름, 종이방패 등
         `;
     }
     document.getElementById('infoModal').style.display = 'flex';
@@ -97,7 +107,7 @@ socket.on('loginSuccess', data => {
     myUserId = data.userId; myNickname = data.nickname; isAdmin = data.isAdmin;
     document.getElementById('welcomeMsg').innerText = `${isAdmin ? '👑관리자' : '👤'} ${myNickname}님 환영합니다!`;
 });
-socket.on('kicked', msg => { alert(msg); history.replaceState(null, '', window.location.pathname); showScreen('screen-lobby'); });
+socket.on('kicked', msg => { alert(msg); history.replaceState(null, '', window.location.pathname); showScreen('screen-roomlist'); });
 
 socket.on('updateRoomList', (list) => {
     const tbody = document.getElementById('roomTableBody'); tbody.innerHTML = '';
@@ -142,8 +152,23 @@ window.copyRoomLink = function() {
     navigator.clipboard.writeText(window.location.origin + window.location.pathname + '?room=' + myRoomId)
     .then(() => alert('초대 링크가 복사되었습니다!')) .catch(() => alert('링크 복사에 실패했습니다.'));
 };
-window.cancelParticipation = function() { if(confirm('참가를 취소하시겠습니까?')) { socket.emit('cancelParticipation', myRoomId); history.replaceState(null, '', window.location.pathname); window.location.reload(); } };
-window.leaveRoomUI = function() { history.replaceState(null, '', window.location.pathname); window.location.reload(); };
+
+// 로그아웃(새로고침) 되지 않고 방 리스트로 이동하도록 수정
+window.cancelParticipation = function() { 
+    if(confirm('참가를 취소하시겠습니까?')) { 
+        socket.emit('cancelParticipation', myRoomId); 
+        history.replaceState(null, '', window.location.pathname); 
+        showScreen('screen-roomlist'); 
+    } 
+};
+window.leaveRoomUI = function() { 
+    if(confirm('방에서 나가시겠습니까?')) {
+        socket.emit('cancelParticipation', myRoomId); // 방에서 데이터 삭제
+        history.replaceState(null, '', window.location.pathname); 
+        showScreen('screen-roomlist'); 
+    }
+};
+
 window.deleteRoom = function(id) { if(confirm('방을 강제 폭파하시겠습니까?')) socket.emit('deleteRoom', id); };
 window.reqDeleteRoom = function() { if(confirm('내 게임 방을 해체하시겠습니까?')) socket.emit('deleteRoom', myRoomId); };
 
@@ -173,10 +198,13 @@ window.startGame = function() {
     document.getElementById('startBtn').style.display = 'none'; document.getElementById('copyLinkBtn').style.display = 'none'; document.getElementById('cancelBtn').style.display = 'none'; 
 }
 
-// 전투 데이터 업데이트 (UI & 3D 엔티티 공유)
+// 참가자 수와 목록을 UI에 업데이트
 socket.on('updatePlayers', (data) => {
     playersData = data.players;
-    document.getElementById('playerList').innerHTML = playersData.map(p => `<span>${p.ownerId === data.masterId ? "👑" : "👤"} ${p.name}</span>`).join(' | ');
+    
+    // 참가자 숫자 및 목록 상단에 반영
+    document.getElementById('playerCount').innerText = `참가자: ${playersData.length}명`;
+    document.getElementById('playerList').innerHTML = playersData.map(p => `<span style="margin-right:8px;">${p.ownerId === data.masterId ? "👑" : "👤"}${p.name}</span>`).join('');
 
     const cardList = document.getElementById('cardList'); cardList.innerHTML = '';
     playersData.forEach(p => {
