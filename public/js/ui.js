@@ -3,18 +3,15 @@
 function showScreen(id) {
     document.querySelectorAll('.screen, #screen-game').forEach(el => el.classList.remove('active'));
     document.getElementById(id).classList.add('active');
-    // 화면 변경 후 캔버스 리사이즈 
     if(id === 'screen-game') { setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }
 }
 
 function toggleRightPanel() {
     const rp = document.getElementById('rightPanel');
     rp.classList.toggle('minimized');
-    // 패널 접기/펴기 후 캔버스 찌그러짐 방지
     setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
 }
 
-// 상성과 기술 도감 분리
 function openDict(type) {
     const title = document.getElementById('modalTitle');
     const body = document.getElementById('modalBody');
@@ -153,7 +150,6 @@ window.copyRoomLink = function() {
     .then(() => alert('초대 링크가 복사되었습니다!')) .catch(() => alert('링크 복사에 실패했습니다.'));
 };
 
-// 로그아웃(새로고침) 되지 않고 방 리스트로 이동하도록 수정
 window.cancelParticipation = function() { 
     if(confirm('참가를 취소하시겠습니까?')) { 
         socket.emit('cancelParticipation', myRoomId); 
@@ -163,7 +159,7 @@ window.cancelParticipation = function() {
 };
 window.leaveRoomUI = function() { 
     if(confirm('방에서 나가시겠습니까?')) {
-        socket.emit('cancelParticipation', myRoomId); // 방에서 데이터 삭제
+        socket.emit('cancelParticipation', myRoomId);
         history.replaceState(null, '', window.location.pathname); 
         showScreen('screen-roomlist'); 
     }
@@ -172,12 +168,57 @@ window.leaveRoomUI = function() {
 window.deleteRoom = function(id) { if(confirm('방을 강제 폭파하시겠습니까?')) socket.emit('deleteRoom', id); };
 window.reqDeleteRoom = function() { if(confirm('내 게임 방을 해체하시겠습니까?')) socket.emit('deleteRoom', myRoomId); };
 
+// ==========================================
+// 통신 및 UI 렌더링 핸들러 (리플레이와 공유하기 위해 분리)
+// ==========================================
+window.handleUIUpdatePlayers = function(data) {
+    playersData = data.players;
+    document.getElementById('playerCount').innerText = `참가자: ${playersData.length}명`;
+    document.getElementById('playerList').innerHTML = playersData.map(p => `<span style="margin-right:8px;">${p.ownerId === data.masterId ? "👑" : "👤"}${p.name}</span>`).join('');
+
+    const cardList = document.getElementById('cardList'); cardList.innerHTML = '';
+    playersData.forEach(p => {
+        p.deck.forEach(c => {
+            cardList.innerHTML += `
+                <div class="card-item ${c.isAlive ? '' : 'dead'}" style="border-left-color: ${c.gradeColor};" onclick="showCardDetail('${c.id}')">
+                    <b style="color:${c.gradeColor}">[${c.grade}]</b> <b>${c.menu}</b> <span style="font-size:11px;color:#888;">(${p.name})</span><br>
+                    직업: ${c.job} | HP: ${c.hp}/${c.maxHp} | MP: ${c.mp}
+                </div>`;
+        });
+    });
+};
+
+window.handleBattleLog = function(htmlMsg) {
+    const logBox = document.getElementById('logMessages');
+    logBox.innerHTML += `<div>${htmlMsg}</div>`;
+    logBox.scrollTop = logBox.scrollHeight;
+    document.getElementById('roundText').innerHTML = "전투 진행 중...";
+};
+
+window.handleGameFinished = function(menu) {
+    document.getElementById('roundText').innerHTML = `🎉 최종 우승: [ ${menu} ] 🎉`;
+    const logBox = document.getElementById('logMessages');
+    logBox.innerHTML += `<div style="color:gold; font-size:16px; font-weight:bold; margin-top:10px;">🏆 게임 종료! 최종 우승 메뉴: ${menu} 🏆</div>`;
+    logBox.scrollTop = logBox.scrollHeight;
+    document.getElementById('replayBtn').style.display = 'block'; // 종료 시 리플레이 노출
+};
+
+// 실시간 소켓 이벤트 수신 (리플레이 중이 아닐 때만)
+socket.on('updatePlayers', data => { if(!isReplaying) handleUIUpdatePlayers(data); });
+socket.on('battleLog', data => { if(!isReplaying) handleBattleLog(data); });
+socket.on('gameFinished', data => { if(!isReplaying) handleGameFinished(data); });
+
 socket.on('joined', (data) => {
     myRoomId = data.roomId; history.pushState(null, '', '?room=' + data.roomId);
     document.getElementById('startBtn').style.display = (data.isMaster && data.state === 'waiting') ? 'block' : 'none';
     document.getElementById('deleteBtn').style.display = data.isMaster ? 'block' : 'none'; 
     document.getElementById('copyLinkBtn').style.display = 'block'; document.getElementById('leaveBtn').style.display = 'block'; 
     document.getElementById('cancelBtn').style.display = (!data.isSpectator && data.state === 'waiting') ? 'block' : 'none';
+    
+    // 📼 관전자로 참여했는데 이미 게임이 진행 중이거나 끝났다면 리플레이 버튼 노출
+    if (data.isSpectator && data.state !== 'waiting') {
+        document.getElementById('replayBtn').style.display = 'block';
+    }
     showScreen('screen-game');
 });
 
@@ -198,44 +239,37 @@ window.startGame = function() {
     document.getElementById('startBtn').style.display = 'none'; document.getElementById('copyLinkBtn').style.display = 'none'; document.getElementById('cancelBtn').style.display = 'none'; 
 }
 
-// 참가자 수와 목록을 UI에 업데이트
-socket.on('updatePlayers', (data) => {
-    playersData = data.players;
+// ==========================================
+// 📼 리플레이 시스템
+// ==========================================
+window.requestReplay = function() {
+    socket.emit('requestReplay', myRoomId);
+};
+
+socket.on('startReplay', (replayData) => {
+    alert('📼 리플레이 재생을 시작합니다!');
     
-    // 참가자 숫자 및 목록 상단에 반영
-    document.getElementById('playerCount').innerText = `참가자: ${playersData.length}명`;
-    document.getElementById('playerList').innerHTML = playersData.map(p => `<span style="margin-right:8px;">${p.ownerId === data.masterId ? "👑" : "👤"}${p.name}</span>`).join('');
+    replayTimeouts.forEach(clearTimeout);
+    replayTimeouts = [];
+    isReplaying = true;
 
-    const cardList = document.getElementById('cardList'); cardList.innerHTML = '';
-    playersData.forEach(p => {
-        p.deck.forEach(c => {
-            cardList.innerHTML += `
-                <div class="card-item ${c.isAlive ? '' : 'dead'}" style="border-left-color: ${c.gradeColor};" onclick="showCardDetail('${c.id}')">
-                    <b style="color:${c.gradeColor}">[${c.grade}]</b> <b>${c.menu}</b> <span style="font-size:11px;color:#888;">(${p.name})</span><br>
-                    직업: ${c.job} | HP: ${c.hp}/${c.maxHp} | MP: ${c.mp}
-                </div>`;
-            
-            if(!entities[c.id]) {
-                entities[c.id] = { 
-                    id: c.id, menu: c.menu, job: c.job, hp: c.hp, maxHp: c.maxHp, isAlive: c.isAlive, color: c.gradeColor, 
-                    x: (Math.random() - 0.5) * 20, y: (Math.random() - 0.5) * 8 
-                };
-                entities[c.id].baseX = entities[c.id].x; entities[c.id].baseY = entities[c.id].y;
-            } else { entities[c.id].hp = c.hp; entities[c.id].isAlive = c.isAlive; }
-        });
+    // UI 및 3D 화면 리셋
+    document.getElementById('logMessages').innerHTML = '';
+    Object.values(meshMap).forEach(mesh => scene.remove(mesh));
+    entities = {}; meshMap = {};
+
+    const initialData = { players: replayData.initialPlayers, masterId: replayData.masterId };
+    handleUIUpdatePlayers(initialData);
+    handle3DUpdatePlayers(initialData);
+
+    // 기록된 시간에 맞춰 이벤트 다시 실행
+    replayData.history.forEach(item => {
+        let tid = setTimeout(() => {
+            if(item.event === 'updatePlayers') { handleUIUpdatePlayers(item.data); handle3DUpdatePlayers(item.data); }
+            if(item.event === 'playBrawlAnimation') handlePlayBrawlAnimation(item.data);
+            if(item.event === 'battleLog') handleBattleLog(item.data);
+            if(item.event === 'gameFinished') { handleGameFinished(item.data); isReplaying = false; }
+        }, item.time);
+        replayTimeouts.push(tid);
     });
-});
-
-socket.on('battleLog', (htmlMsg) => {
-    const logBox = document.getElementById('logMessages');
-    logBox.innerHTML += `<div>${htmlMsg}</div>`;
-    logBox.scrollTop = logBox.scrollHeight;
-    document.getElementById('roundText').innerHTML = "전투 진행 중...";
-});
-
-socket.on('gameFinished', (menu) => {
-    document.getElementById('roundText').innerHTML = `🎉 최종 우승: [ ${menu} ] 🎉`;
-    const logBox = document.getElementById('logMessages');
-    logBox.innerHTML += `<div style="color:gold; font-size:16px; font-weight:bold; margin-top:10px;">🏆 게임 종료! 최종 우승 메뉴: ${menu} 🏆</div>`;
-    logBox.scrollTop = logBox.scrollHeight;
 });
