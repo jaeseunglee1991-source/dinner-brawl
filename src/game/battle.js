@@ -4,7 +4,7 @@ const { AFFINITIES, SKILLS, JOBS, GRADES } = require('../data/constants');
 const random = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-// ⏳ 30초 이상의 전투를 위해 기본 체력(HP)을 기존 10~25에서 대폭 상향!
+// ⏳ 30초 이상의 전투를 위해 기본 체력(HP)을 대폭 상향
 const rollStat = () => ({ hp: random(250, 450), atk: random(4, 9) });
 
 function generateDeck(playerName, menus) {
@@ -91,7 +91,6 @@ function calculateAttack(attacker, target, allAliveCards, io) {
     }
     if (has(attacker, 'DOUBLE_ATTACK') && Math.random() < 0.3) damage *= 2;
     
-    // 리플레이와 충돌 방지를 위해 서버 콘솔에는 찍지만 소켓 통신은 handler.js에서 일괄 처리
     return { attackerId: attacker.id, targetId: target.id, damage, attackerDamage, heal, allyHealId, isCrit, msg };
 }
 
