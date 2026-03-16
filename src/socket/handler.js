@@ -36,7 +36,6 @@ module.exports = function(io, pool, rooms) {
         room.initialPlayers = JSON.parse(JSON.stringify(Object.values(room.players)));
         const battleStartTime = Date.now();
 
-        // 🛠️ 버그 수정: 리플레이에 '현재 시점의 데이터'를 복사(박제)해서 저장
         function emitToRoom(event, data) {
             io.to(roomId).emit(event, data);
             room.replay.push({ 
@@ -53,8 +52,8 @@ module.exports = function(io, pool, rooms) {
 
         Object.values(players).forEach(p => {
             p.deck.forEach(c => {
-                c.maxCooldown = (c.job === '도적' || c.job === '암살자') ? 1200 : (c.job === '전사' || c.job === '버서커') ? 1800 : 2200;
-                c.cooldown = Math.random() * 1000 + 500; 
+                // ⭐️ 직업에 설정된 기본 공격 속도를 그대로 사용! (초기 쿨다운만 분산)
+                c.cooldown = Math.random() * 800 + 200; 
             });
         });
 
@@ -88,7 +87,7 @@ module.exports = function(io, pool, rooms) {
                         let ev = calculateAttack(attacker, target, allAliveCards, io);
                         attackEvents.push(ev);
                         emitToRoom('battleLog', ev.msg + ` <span style="color:#e74c3c">[-${ev.damage}]</span>`);
-                        attacker.cooldown = attacker.maxCooldown + (Math.random() * 400 - 200);
+                        attacker.cooldown = attacker.maxCooldown + (Math.random() * 200 - 100);
                     }
                 }
             }
@@ -126,7 +125,7 @@ module.exports = function(io, pool, rooms) {
                         let ev = calculateAttack(attacker, target, aliveCards, io);
                         attackEvents.push(ev);
                         emitToRoom('battleLog', ev.msg + ` <span style="color:#e74c3c">[-${ev.damage}]</span>`);
-                        attacker.cooldown = attacker.maxCooldown + (Math.random() * 400 - 200);
+                        attacker.cooldown = attacker.maxCooldown + (Math.random() * 200 - 100);
                     }
                 }
             }
