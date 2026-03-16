@@ -1,8 +1,8 @@
 // public/js/3d/character.js
 
 function createDetailedCharacter(job, gradeColor) {
-    const wrapper = new THREE.Group(); // ⭐️ 전체 크기와 위치를 제어할 최상위 껍데기
-    const group = new THREE.Group();   // ⭐️ 캐릭터 부품들이 조립될 내부 몸체
+    const wrapper = new THREE.Group(); 
+    const group = new THREE.Group(); 
 
     const matBody = new THREE.MeshStandardMaterial({ color: gradeColor, roughness: 0.6 });
     const matSkin = new THREE.MeshStandardMaterial({ color: 0xffcc99, roughness: 0.5 });
@@ -15,11 +15,12 @@ function createDetailedCharacter(job, gradeColor) {
     const matRage = new THREE.MeshBasicMaterial({ color: 0xff3300 });
 
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.6, 32, 32), matSkin); head.position.y = 1.2; group.add(head);
+    
+    // 몸통(원기둥)의 높이는 0.8이고 중심이 0.4에 있으므로, 발바닥은 정확히 Y = 0 입니다.
     const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 0.8, 16), matBody); torso.position.y = 0.4; group.add(torso);
     const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.7, 16), matBody); armL.position.set(-0.5, 0.6, 0); armL.rotation.z = Math.PI/6; group.add(armL);
     const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.7, 16), matBody); armR.position.set(0.5, 0.6, 0); armR.rotation.z = -Math.PI/6; group.add(armR);
 
-    // ⭐️ 직업별 장비 장착
     if (job === '전사') {
         const helm = new THREE.Mesh(new THREE.SphereGeometry(0.62, 32, 32, 0, Math.PI*2, 0, Math.PI/2), matMetal); helm.position.y = 1.2; group.add(helm);
         const sword = new THREE.Group(); const blade = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.2, 0.05), matMetal); const guard = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.1), matGold); const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3), matDark);
@@ -77,11 +78,8 @@ function createDetailedCharacter(job, gradeColor) {
 
     group.traverse((child) => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; } });
     
-    // ⭐️ 핵심 해결: 내부 그룹을 통째로 1.1만큼 끌어올려 발바닥이 wrapper의 Y=0에 딱 맞게 만듦
-    group.position.y = 1.1; 
+    // 🛠️ 핵심 수정: 발바닥 오프셋(+1.1)을 아예 지워버려서, 캐릭터의 발이 블록 윗면에 정확하게 밀착되게 만듦!
     wrapper.add(group);
-    
-    // ⭐️ 1.8배 확대를 해도 발바닥 위치는 Y=0으로 유지됨
     wrapper.scale.set(1.8, 1.8, 1.8);
     
     return wrapper;
