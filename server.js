@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const { Pool } = require('pg'); // PostgreSQL 연동 모듈 추가
 
 const app = express();
 const server = http.createServer(app);
@@ -8,17 +9,43 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
-// --- 데이터 저장소 ---
+// --- PostgreSQL 데이터베이스 설정 ---
+// Render 환경 변수(DATABASE_URL)를 자동으로 가져와 연결합니다.
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false } // 외부 DB 연결 시 필수 보안 설정
+});
+
+// 서버 시작 시 DB 테이블 세팅 및 어드민 계정 자동 생성
+async function initDB() {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id VARCHAR(50) PRIMARY KEY,
+                pw VARCHAR(100) NOT NULL,
+                nickname VARCHAR(50) NOT NULL,
+                is_admin BOOLEAN DEFAULT FALSE
+            )
+        `);
+        // root 어드민 계정이 없으면 생성
+        await pool.query(`
+            INSERT INTO users (id, pw, nickname, is_admin)
+            VALUES ('root', 'Skfls1223@', '시스템관리자', TRUE)
+            ON CONFLICT (id) DO NOTHING
+        `);
+        console.log("✅ PostgreSQL DB 연결 및 초기화 완료!");
+    } catch (err) {
+        console.error("❌ DB 초기화 에러:", err);
+    }
+}
+initDB();
+
+// --- 게임 데이터 저장소 (세션/방은 메모리 유지) ---
 const rooms = {};
-// 계정 DB (서버 메모리 저장 방식)
-const users = {
-    'root': { pw: 'Skfls1223@', nickname: '시스템관리자', isAdmin: true }
-};
 
 // 1. 7대 상성 및 30종 특수기술
 const AFFINITIES = ['SPICY', 'GREASY', 'FRESH', 'SALTY', 'SWEET', 'MINT_CHOCO', 'PINEAPPLE'];
 const SKILLS = [
-    // 🟢 버프 20개
     { name: 'CRITICAL', desc: '50% 확률로 2배 피해' }, { name: 'LIFESTEAL', desc: '입힌 피해의 50% 회복' },
     { name: 'DOUBLE_ATTACK', desc: '30% 확률로 한 번 더 타격' }, { name: 'GIANT_KILLER', desc: '체력 높은 적에게 1.5배 피해' },
     { name: 'FRENZY', desc: '공격할 때마다 영구적으로 공격력 +2' }, { name: 'IRON_FIST', desc: '무조건 최소 10 데미지 보장' },
@@ -29,7 +56,6 @@ const SKILLS = [
     { name: 'HEALER', desc: '공격 시 아군 1명 체력 5 회복' }, { name: 'LUCKY', desc: '77% 확률로 +7 추가 데미지' },
     { name: 'GUARDIAN', desc: '15% 확률로 적의 공격 완벽 방어' }, { name: 'COMBO', desc: '공격할 때마다 데미지 +1 영구 증가' },
     { name: 'MAGICIAN', desc: '20% 확률로 방어무시 20 피해' }, { name: 'PHOENIX', desc: '사망 시 1회 한정 HP 1로 부활' },
-    // 🔴 디버프 10개
     { name: 'CLUMSY', desc: '30% 확률로 공격 빗나감' }, { name: 'KAMIKAZE', desc: '10% 확률로 자폭 (적 30 피해, 본인 즉사)' },
     { name: 'WEAK', desc: '시작 시 최대 체력 -10' }, { name: 'SOFT_PUNCH', desc: '시작 시 기본 공격력 반토막' },
     { name: 'ALLERGY', desc: '공격할 때마다 자신도 3 피해 입음' }, { name: 'COWARD', desc: '20% 확률로 공격 포기' },
@@ -77,7 +103,7 @@ async function runBattle(roomId) {
     
     let round = 1;
     while (getAliveTeams().length > 1) {
-        if(!rooms[roomId]) return; // 도중에 방 폭파 시 중단
+        if(!rooms[roomId]) return; 
         io.to(roomId).emit('battleLog', `<br><b>--- [대난투 Round ${round}] ---</b>`);
         let allAliveCards = getAliveTeams().flatMap(p => p.deck.filter(c => c.isAlive));
         let attackEvents = [];
@@ -111,7 +137,7 @@ async function runBattle(roomId) {
     if (winnerTeam) {
         io.to(roomId).emit('battleLog', `<br>🎉 <b>[${winnerTeam.name}] 팀 우승! 팀 내 데스매치 시작!</b> 🎉`);
         while (winnerTeam.deck.filter(c => c.isAlive).length > 1) {
-            if(!rooms[roomId]) return; // 도중 폭파
+            if(!rooms[roomId]) return; 
             let aliveCards = winnerTeam.deck.filter(c => c.isAlive);
             let attackEvents = [];
             for (let attacker of aliveCards) {
@@ -180,29 +206,46 @@ function calculateAttack(attacker, target, allAliveCards) {
 
 io.on('connection', (socket) => {
     
-    // --- 계정 및 인증 시스템 ---
-    socket.on('register', ({ id, pw, nickname }) => {
-        if(users[id]) return socket.emit('errorMsg', '이미 존재하는 ID입니다.');
-        users[id] = { pw, nickname, isAdmin: false };
-        socket.emit('authSuccess', '회원가입이 완료되었습니다. 이제 로그인해주세요.');
+    // --- 계정 및 인증 시스템 (PostgreSQL DB 연동) ---
+    socket.on('register', async ({ id, pw, nickname }) => {
+        try {
+            // 1. ID 중복 확인
+            const res = await pool.query('SELECT id FROM users WHERE id = $1', [id]);
+            if (res.rows.length > 0) return socket.emit('errorMsg', '이미 존재하는 ID입니다.');
+
+            // 2. DB에 저장
+            await pool.query('INSERT INTO users (id, pw, nickname) VALUES ($1, $2, $3)', [id, pw, nickname]);
+            socket.emit('authSuccess', '회원가입이 완료되었습니다. 이제 로그인해주세요.');
+        } catch (err) {
+            console.error("회원가입 에러:", err);
+            socket.emit('errorMsg', '서버(DB) 오류가 발생했습니다.');
+        }
     });
 
-    socket.on('login', ({ id, pw }) => {
-        const user = users[id];
-        if(!user || user.pw !== pw) return socket.emit('errorMsg', 'ID 또는 비밀번호가 틀렸습니다.');
-        
-        socket.userId = id;
-        socket.nickname = user.nickname;
-        socket.isAdmin = user.isAdmin;
-        socket.emit('loginSuccess', { userId: id, nickname: user.nickname, isAdmin: user.isAdmin });
-        socket.emit('updateRoomList', getRoomList()); // 로그인 성공 시 방 목록 전송
+    socket.on('login', async ({ id, pw }) => {
+        try {
+            const res = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+            if (res.rows.length === 0) return socket.emit('errorMsg', '존재하지 않는 ID입니다.');
+
+            const user = res.rows[0];
+            if (user.pw !== pw) return socket.emit('errorMsg', '비밀번호가 틀렸습니다.');
+            
+            socket.userId = user.id;
+            socket.nickname = user.nickname;
+            socket.isAdmin = user.is_admin;
+            
+            socket.emit('loginSuccess', { userId: user.id, nickname: user.nickname, isAdmin: user.is_admin });
+            socket.emit('updateRoomList', getRoomList());
+        } catch (err) {
+            console.error("로그인 에러:", err);
+            socket.emit('errorMsg', '서버(DB) 오류가 발생했습니다.');
+        }
     });
 
     // --- 방 관리 ---
     socket.on('createRoom', ({ roomName, password, menus }) => {
         if(!socket.userId) return socket.emit('errorMsg', '로그인이 필요합니다.');
         const roomId = Math.random().toString(36).substr(2, 6);
-        // master를 socket.id가 아닌 고유 userId로 지정
         rooms[roomId] = { name: roomName, password: password, master: socket.userId, players: {}, state: 'waiting' };
         
         socket.join(roomId);
@@ -233,11 +276,9 @@ io.on('connection', (socket) => {
         io.emit('updateRoomList', getRoomList());
     });
 
-    // --- 방 폭파 권한 로직 ---
     socket.on('deleteRoom', (roomId) => {
         const room = rooms[roomId];
         if(room) {
-            // 어드민이거나, 이 방의 방장(master)인 경우만 폭파 가능
             if(socket.isAdmin || room.master === socket.userId) {
                 let kicker = socket.isAdmin ? '관리자' : '방장';
                 io.to(roomId).emit('kicked', `🚨 ${kicker}에 의해 방이 폭파되었습니다!`);
@@ -249,7 +290,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 기타
     socket.on('chatMessage', (data) => io.to(data.roomId).emit('chatMessage', { sender: data.sender, text: data.text }));
     socket.on('startGame', (roomId) => {
         if (rooms[roomId] && rooms[roomId].master === socket.userId) {
