@@ -1,7 +1,9 @@
-socket.on('updatePlayers', (data) => {
+// public/js/engine3d.js
+
+// 3D 캐릭터 위치 및 상태 업데이트 분리
+window.handle3DUpdatePlayers = function(data) {
     if (window.myRoomId && window.myRoomId !== currentThemeRoom) {
-        currentThemeRoom = window.myRoomId;
-        buildEnvironment(window.myRoomId);
+        currentThemeRoom = window.myRoomId; buildEnvironment(window.myRoomId);
     }
     
     data.players.forEach(p => {
@@ -9,37 +11,38 @@ socket.on('updatePlayers', (data) => {
             if(!entities[c.id]) {
                 entities[c.id] = { 
                     id: c.id, menu: c.menu, job: c.job, isAlive: c.isAlive, color: c.gradeColor, 
-                    x: (Math.random() - 0.5) * 24, 
-                    z: (Math.random() - 0.5) * 20  
+                    x: (Math.random() - 0.5) * 24, z: (Math.random() - 0.5) * 20  
                 };
-                entities[c.id].baseX = entities[c.id].x; 
-                entities[c.id].baseZ = entities[c.id].z;
+                entities[c.id].baseX = entities[c.id].x; entities[c.id].baseZ = entities[c.id].z;
             } else { entities[c.id].isAlive = c.isAlive; }
         });
     });
-});
+};
 
-socket.on('playBrawlAnimation', (attackEvents) => {
+// 공격 모션 및 데미지 텍스트 팝업 분리
+window.handlePlayBrawlAnimation = function(attackEvents) {
     attackEvents.forEach(ev => {
         let attacker = entities[ev.attackerId]; let target = entities[ev.targetId];
         if(attacker && target) {
-            attacker.targetX = target.x; 
-            attacker.targetZ = target.z; 
+            attacker.targetX = target.x; attacker.targetZ = target.z; 
             
             setTimeout(() => {
-                let text = ev.damage === 999 ? "💥즉사!" : (ev.damage === 0 ? "빗나감" : `-${ev.damage}`);
-                let color = ev.isCrit ? "#ff4757" : (ev.damage === 999 ? "#ff7f50" : "#ffffff");
+                let text = ev.damage >= 9999 ? "💥즉사!" : (ev.damage === 0 ? "빗나감" : `-${ev.damage}`);
+                let color = ev.isCrit ? "#ff4757" : (ev.damage >= 9999 ? "#ff7f50" : "#ffffff");
                 if(meshMap[ev.targetId]) {
                     showDamageText(meshMap[ev.targetId], text, color, ev.isCrit);
                     meshMap[ev.targetId].position.y += 0.8;
                     setTimeout(() => meshMap[ev.targetId].position.y -= 0.8, 150);
                 }
-                attacker.targetX = attacker.baseX; 
-                attacker.targetZ = attacker.baseZ; 
+                attacker.targetX = attacker.baseX; attacker.targetZ = attacker.baseZ; 
             }, 300); 
         }
     });
-});
+};
+
+// 실시간 소켓 (리플레이 재생 중이 아닐 때만)
+socket.on('updatePlayers', data => { if(!isReplaying) handle3DUpdatePlayers(data); });
+socket.on('playBrawlAnimation', data => { if(!isReplaying) handlePlayBrawlAnimation(data); });
 
 function gameLoop() {
     requestAnimationFrame(gameLoop);
@@ -55,8 +58,7 @@ function gameLoop() {
 
         if(!meshMap[e.id]) {
             const charModel = createDetailedCharacter(e.job, e.color);
-            scene.add(charModel);
-            meshMap[e.id] = charModel;
+            scene.add(charModel); meshMap[e.id] = charModel;
         }
 
         let mesh = meshMap[e.id];
