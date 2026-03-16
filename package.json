@@ -1,0 +1,13 @@
+{
+  "name": "dinner-brawl",
+  "version": "1.0.0",
+  "description": "저녁 메뉴 난투 게임",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  }
+}
