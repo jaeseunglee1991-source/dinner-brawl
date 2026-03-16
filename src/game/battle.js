@@ -4,8 +4,8 @@ const { AFFINITIES, SKILLS, JOBS, GRADES } = require('../data/constants');
 const random = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-// ⏳ 30초 이상의 전투를 위해 기본 체력(HP)을 대폭 상향
-const rollStat = () => ({ hp: random(250, 450), atk: random(4, 9) });
+// ⏱️ 전투가 약 20초 정도 지속되도록 스탯 조정
+const rollStat = () => ({ hp: random(150, 250), atk: random(15, 25) });
 
 function generateDeck(playerName, menus) {
     let deck = [];
@@ -13,10 +13,9 @@ function generateDeck(playerName, menus) {
     
     const applyStartStats = (card) => {
         const has = (sk) => card.skills.some(s => s.name === sk);
-        // 고정 수치 스킬들도 체력 뻥튀기에 맞춰 스케일업
-        if (has('TANK')) card.maxHp += 200; 
-        if (has('WEAK')) card.maxHp -= 100;
-        if (has('SWORD_MASTER')) card.atk += 5;
+        if (has('TANK')) card.maxHp += 100; 
+        if (has('WEAK')) card.maxHp -= 50;
+        if (has('SWORD_MASTER')) card.atk += 10;
         if (has('SOFT_PUNCH')) card.atk = Math.max(1, Math.floor(card.atk / 2));
         card.hp = card.maxHp; 
         if (card.hp <= 0) { card.hp = 1; card.maxHp = 1; }
@@ -26,7 +25,16 @@ function generateDeck(playerName, menus) {
 
     menus.forEach(menu => {
         let job = getRandomItem(JOBS);
-        let grade = getRandomItem(GRADES);
+        
+        // ⭐ 확률에 기반한 등급 추첨
+        let rand = Math.random() * 100;
+        let sum = 0;
+        let grade = GRADES[GRADES.length - 1]; // 기본값: 일반
+        for (let g of GRADES) {
+            sum += g.prob;
+            if (rand <= sum) { grade = g; break; }
+        }
+
         let baseHp = rollStat().hp;
         let baseAtk = rollStat().atk;
 
@@ -68,20 +76,20 @@ function calculateAttack(attacker, target, allAliveCards, io) {
     if (has(attacker, 'BERSERKER') && attacker.hp <= attacker.maxHp / 2) damage *= 2;
     if (has(attacker, 'BULLY') && target.hp < attacker.hp) damage = Math.floor(damage * 1.5);
     if (has(attacker, 'GIANT_KILLER') && target.hp > attacker.hp) damage = Math.floor(damage * 1.5);
-    if (has(attacker, 'MAGICIAN') && Math.random() < 0.2) { damage = 50; msg += ` (마법 피해)`; } // 스케일업
-    if (has(attacker, 'LUCKY') && Math.random() < 0.77) damage += 30; // 스케일업
+    if (has(attacker, 'MAGICIAN') && Math.random() < 0.2) { damage = 40; msg += ` (마법 피해)`; } 
+    if (has(attacker, 'LUCKY') && Math.random() < 0.77) damage += 20; 
     if (has(attacker, 'SNIPER') && Math.random() < 0.2) { damage *= 3; isCrit = true; } 
     else if (has(attacker, 'CRITICAL') && Math.random() < 0.5) { damage *= 2; isCrit = true; }
     
-    if (has(attacker, 'IRON_FIST') && damage < 20) damage = 20;
+    if (has(attacker, 'IRON_FIST') && damage < 15) damage = 15;
     if (has(target, 'SHIELD')) damage = Math.floor(damage / 2);
     if (has(target, 'CURSED')) damage = Math.floor(damage * 1.5);
-    if (has(target, 'PAPER_SHIELD')) damage += 15;
+    if (has(target, 'PAPER_SHIELD')) damage += 10;
     
     if (has(attacker, 'LIFESTEAL')) heal = Math.floor(damage / 2);
     if (has(attacker, 'VAMPIRE')) heal = damage;
-    if (has(attacker, 'KAMIKAZE') && Math.random() < 0.1) { damage += 150; attackerDamage = 9999; msg += ` 자폭!`; } // 스케일업
-    if (has(attacker, 'ALLERGY')) attackerDamage += 10;
+    if (has(attacker, 'KAMIKAZE') && Math.random() < 0.1) { damage += 100; attackerDamage = 9999; msg += ` 자폭!`; } 
+    if (has(attacker, 'ALLERGY')) attackerDamage += 5;
     if (has(attacker, 'FRENZY')) attacker.atk += 2;
     if (has(attacker, 'COMBO')) attacker.atk += 1;
     
