@@ -32,12 +32,12 @@ module.exports = function(io, pool, rooms) {
         const room = rooms[roomId]; if(!room) return;
         let players = room.players;
         
-        // 📼 리플레이 기록 초기화
+        // 📼 리플레이 기록 배열 생성
         room.replay = [];
         room.initialPlayers = JSON.parse(JSON.stringify(Object.values(room.players)));
         const battleStartTime = Date.now();
 
-        // 커스텀 Emit 함수: 클라이언트에 보내면서 동시에 리플레이 배열에 시간과 함께 저장!
+        // 방 전체에 소켓을 보내면서 동시에 리플레이 배열에 저장하는 함수
         function emitToRoom(event, data) {
             io.to(roomId).emit(event, data);
             room.replay.push({ time: Date.now() - battleStartTime, event, data });
@@ -137,7 +137,6 @@ module.exports = function(io, pool, rooms) {
     }
 
     io.on('connection', (socket) => {
-        // ... (register, login 로직 기존과 동일하게 유지) ...
         socket.on('register', async ({ id, pw, nickname }) => { try { const res = await pool.query('SELECT id FROM users WHERE id = $1', [id]); if (res.rows.length > 0) return socket.emit('errorMsg', '이미 존재하는 ID입니다.'); await pool.query('INSERT INTO users (id, pw, nickname) VALUES ($1, $2, $3)', [id, pw, nickname]); socket.emit('authSuccess', '회원가입이 완료되었습니다.'); } catch (err) { socket.emit('errorMsg', '서버 오류'); } });
         socket.on('login', async ({ id, pw }) => { try { const res = await pool.query('SELECT * FROM users WHERE id = $1', [id]); if (res.rows.length === 0) return socket.emit('errorMsg', '존재하지 않는 ID입니다.'); const user = res.rows[0]; if (user.pw !== pw) return socket.emit('errorMsg', '비번오류'); socket.userId = user.id; socket.nickname = user.nickname; socket.isAdmin = user.is_admin; socket.emit('loginSuccess', { userId: user.id, nickname: user.nickname, isAdmin: user.is_admin }); socket.emit('updateRoomList', getRoomList()); } catch (err) { socket.emit('errorMsg', '서버 오류'); } });
         
@@ -167,7 +166,7 @@ module.exports = function(io, pool, rooms) {
             io.to(roomId).emit('chatMessage', { sender: 'System', text: `👁️ ${socket.nickname}님이 관전자로 입장했습니다.` });
         });
 
-        // 📼 관전자가 리플레이를 요청할 때
+        // 📼 클라이언트가 리플레이를 요청할 때
         socket.on('requestReplay', (roomId) => {
             const room = rooms[roomId];
             if (room && room.replay && room.replay.length > 0) {
