@@ -10,9 +10,12 @@ window.handle3DUpdatePlayers = function(data) {
     data.players.forEach(p => {
         p.deck.forEach(c => {
             if(!entities[c.id]) {
+                let startX = (Math.random() - 0.5) * 24;
+                let startZ = (Math.random() - 0.5) * 20;
                 entities[c.id] = { 
                     id: c.id, menu: c.menu, job: c.job, isAlive: c.isAlive, color: c.gradeColor, 
-                    x: (Math.random() - 0.5) * 24, z: (Math.random() - 0.5) * 20,
+                    x: startX, z: startZ,
+                    y: window.getTerrainHeight ? window.getTerrainHeight(startX, startZ) : 0, // ⛰️ 초기 Y 높이 세팅
                     isAttacking: false 
                 };
                 entities[c.id].baseX = entities[c.id].x; 
@@ -53,19 +56,22 @@ window.handlePlayBrawlAnimation = function(attackEvents) {
                 
                 attacker.baseX = attacker.targetX; 
                 attacker.baseZ = attacker.targetZ; 
-
                 attacker.isAttacking = 'ranged';
 
                 setTimeout(() => {
                     let projMesh = createProjectileMesh(job);
-                    // 🌟 캐릭터 크기에 맞춰 발사 높이를 1.5 -> 2.5로 상향
-                    projMesh.position.set(attacker.baseX, 2.5, attacker.baseZ);
+                    
+                    // ⛰️ 투사체 발사 시 높이 고저차 계산
+                    let startY = (window.getTerrainHeight ? window.getTerrainHeight(attacker.baseX, attacker.baseZ) : 0) + 2.5;
+                    let targetY = (window.getTerrainHeight ? window.getTerrainHeight(target.baseX, target.baseZ) : 0) + 1.5;
+                    
+                    projMesh.position.set(attacker.baseX, startY, attacker.baseZ);
                     scene.add(projMesh);
                     
                     projectiles.push({
                         mesh: projMesh, job: job,
-                        startX: attacker.baseX, startZ: attacker.baseZ,
-                        targetX: target.baseX, targetZ: target.baseZ,
+                        startX: attacker.baseX, startY: startY, startZ: attacker.baseZ,
+                        targetX: target.baseX, targetY: targetY, targetZ: target.baseZ,
                         progress: 0
                     });
                 }, 400); 
@@ -77,7 +83,6 @@ window.handlePlayBrawlAnimation = function(attackEvents) {
                 let dx = target.baseX - attacker.baseX;
                 let dz = target.baseZ - attacker.baseZ;
                 let dist = Math.sqrt(dx*dx + dz*dz);
-                // 🌟 캐릭터가 커졌으므로 겹치지 않게 멈추는 거리를 2.0 -> 3.5로 넓힘
                 let stopDist = 3.5; 
 
                 if (dist > stopDist) {
@@ -90,7 +95,6 @@ window.handlePlayBrawlAnimation = function(attackEvents) {
                 
                 attacker.baseX = attacker.targetX; 
                 attacker.baseZ = attacker.targetZ; 
-
                 attacker.isAttacking = 'melee';
 
                 setTimeout(() => applyDamageEffect(ev, target), 800); 
@@ -117,7 +121,6 @@ function gameLoop() {
 
         if(!meshMap[e.id]) {
             const charModel = createDetailedCharacter(e.job, e.color);
-            // 🌟 3D 객체의 스케일을 1.8배로 대폭 확대!
             charModel.scale.set(1.8, 1.8, 1.8);
             scene.add(charModel); 
             meshMap[e.id] = charModel;
@@ -125,40 +128,38 @@ function gameLoop() {
 
         let mesh = meshMap[e.id];
         
+        // 🐢 이동 처리
         if(e.targetX !== undefined) e.x += (e.targetX - e.x) * 0.05;
         if(e.targetZ !== undefined) e.z += (e.targetZ - e.z) * 0.05;
         
+        // ⛰️ 지형 단차 높이 읽기 및 부드러운 승강 처리 (핵심)
+        let targetHeight = window.getTerrainHeight ? window.getTerrainHeight(e.x, e.z) + 1.2 : 1.2;
+        e.y = e.y || targetHeight;
+        e.y += (targetHeight - e.y) * 0.15; // 부드럽게 지형을 타고 오름
+        
         let isMoving = Math.abs(e.targetX - e.x) > 0.1 || Math.abs(e.targetZ - e.z) > 0.1;
         let jumpY = isMoving ? Math.abs(Math.sin(time * 4)) * 0.6 : Math.sin(time * 1.5 + e.x) * 0.05;
-        mesh.position.set(e.x, jumpY, e.z);
         
+        mesh.position.set(e.x, e.y + jumpY, e.z);
+        
+        // 전투 모션
         if (e.isAttacking === 'melee') {
             mesh.rotation.y = Math.atan2(e.x - e.baseX, e.z - e.baseZ);
-            
-            if (e.job === '탱커') {
-                mesh.rotation.x = Math.PI / 4; 
-            } else if (e.job === '전사' || e.job === '버서커') {
-                mesh.rotation.y += time * 8; 
-                mesh.rotation.x = 0;
-            } else {
-                mesh.rotation.x = Math.PI / 6; 
-            }
+            if (e.job === '탱커') { mesh.rotation.x = Math.PI / 4; } 
+            else if (e.job === '전사' || e.job === '버서커') { mesh.rotation.y += time * 8; mesh.rotation.x = 0; } 
+            else { mesh.rotation.x = Math.PI / 6; }
         } else if (e.isAttacking === 'ranged') {
             mesh.rotation.y = Math.atan2(e.targetX - e.baseX, e.targetZ - e.baseZ);
-            if (e.job === '마법사' || e.job === '사제') {
-                mesh.position.y += 1.0; 
-            }
+            if (e.job === '마법사' || e.job === '사제') { mesh.position.y += 1.0; }
             mesh.rotation.x = 0;
         } else {
             mesh.rotation.x = 0;
-            if (isMoving) {
-                mesh.rotation.y = Math.atan2(e.targetX - e.x, e.targetZ - e.z);
-            } else {
-                mesh.rotation.y = Math.sin(time * 0.5 + e.z) * 0.15; 
-            }
+            if (isMoving) { mesh.rotation.y = Math.atan2(e.targetX - e.x, e.targetZ - e.z); } 
+            else { mesh.rotation.y = Math.sin(time * 0.5 + e.z) * 0.15; }
         }
     });
     
+    // 🏹 투사체 연산 (고저차 반영)
     for (let i = projectiles.length - 1; i >= 0; i--) {
         let p = projectiles[i];
         p.progress += 0.03; 
@@ -170,15 +171,17 @@ function gameLoop() {
             p.mesh.position.x = p.startX + (p.targetX - p.startX) * p.progress;
             p.mesh.position.z = p.startZ + (p.targetZ - p.startZ) * p.progress;
             
-            // 🌟 발사 높이가 2.5로 상향됨
+            // 시작점과 도착점의 높이 차이를 자연스럽게 보간
+            let currentBaseY = p.startY + (p.targetY - p.startY) * p.progress;
+            
             if (p.job === '궁수') {
                 p.mesh.rotation.z = Math.atan2(p.targetX - p.startX, p.targetZ - p.startZ);
-                p.mesh.position.y = 2.5 + Math.sin(p.progress * Math.PI) * 4.0; // 궤적 높이 상향
+                p.mesh.position.y = currentBaseY + Math.sin(p.progress * Math.PI) * 4.0; // 궤적
             } else if (p.job === '암살자') {
                 p.mesh.rotation.y += 0.4; 
-                p.mesh.position.y = 2.5;
+                p.mesh.position.y = currentBaseY;
             } else {
-                p.mesh.position.y = 2.5;
+                p.mesh.position.y = currentBaseY;
             }
         }
     }
