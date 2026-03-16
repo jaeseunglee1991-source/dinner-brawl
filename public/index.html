@@ -24,7 +24,7 @@
         .text-link { color: #2980b9; cursor: pointer; text-decoration: underline; font-size: 14px; margin-top: 15px; display: inline-block; }
 
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: center; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: center; font-size: 14px; }
         th { background-color: #34495e; color: white; }
         tr:nth-child(even) { background-color: #f2f2f2; }
         tr:hover { background-color: #d6eaf8; cursor: pointer; }
@@ -49,9 +49,9 @@
 
         .card-item { background: #ecf0f1; color: #333; padding: 10px; margin-bottom: 10px; border-radius: 8px; border-left: 5px solid #e74c3c; text-align: left; font-size: 14px; }
         .card-item.dead { opacity: 0.5; filter: grayscale(100%); text-decoration: line-through; border-left-color: #7f8c8d; }
-        .action-btn { padding: 12px; background-color: #e74c3c; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin: 0 5px; transition: 0.2s; }
+        .action-btn { padding: 12px; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin: 0 5px; transition: 0.2s; }
         .action-btn:hover { transform: scale(1.05); }
-        .bottom-buttons { position: absolute; bottom: 20px; z-index: 20; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .bottom-buttons { position: absolute; bottom: 20px; z-index: 20; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
     </style>
 </head>
 <body>
@@ -98,9 +98,9 @@
 
     <div id="screen-roomlist" class="screen" style="max-width: 800px;">
         <h2>🚪 활성화된 게임방 목록</h2>
-        <p style="font-size: 14px; color: #555;">방을 <b>더블클릭</b>하여 참가하세요!</p>
+        <p style="font-size: 14px; color: #555;">방을 <b>더블클릭</b>하여 카드를 내고 참가하거나, <b>관전</b> 버튼을 누르세요!</p>
         <table>
-            <thead><tr><th>방제</th><th>상태</th><th>인원</th><th>비밀번호</th><th class="adminCol" style="display:none;">폭파권한</th></tr></thead>
+            <thead><tr><th>방제</th><th>상태</th><th>인원</th><th>잠금</th><th>액션</th></tr></thead>
             <tbody id="roomTableBody"></tbody>
         </table>
         <button class="btn btn-gray" onclick="showScreen('screen-lobby')">로비로 돌아가기</button>
@@ -137,8 +137,9 @@
                 <div class="bottom-buttons">
                     <button id="startBtn" class="action-btn" style="display:none; background-color:#27ae60;" onclick="startGame()">⚔️ 대난투 시작</button>
                     <button id="copyLinkBtn" class="action-btn" style="display:none; background-color:#f39c12;" onclick="copyRoomLink()">🔗 초대 링크 복사</button>
+                    <button id="cancelBtn" class="action-btn" style="display:none; background-color:#d35400;" onclick="cancelParticipation()">❌ 참가 취소</button>
+                    <button id="leaveBtn" class="action-btn" style="display:none; background-color:#7f8c8d;" onclick="leaveRoomUI()">🚪 방 나가기</button>
                     <button id="deleteBtn" class="action-btn" style="display:none; background-color:#8e44ad;" onclick="reqDeleteRoom()">💣 방 폭파</button>
-                    <button id="leaveBtn" class="action-btn" style="display:none; background-color:#7f8c8d;" onclick="leaveRoomUI()">🚪 나가기</button>
                 </div>
             </div>
 
@@ -164,9 +165,8 @@
         let myUserId = "", myNickname = "", isAdmin = false;
         let myRoomId = "", selectedRoomId = "", selectedRoomRequiresPw = false;
         let playersData = [];
-        let initialRouteHandled = false; // 딥링크 처리용 플래그
+        let initialRouteHandled = false;
         
-        // --- 화면 제어 ---
         function showScreen(id) {
             document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
             document.getElementById(id).classList.add('active');
@@ -176,7 +176,6 @@
             }
         }
 
-        // --- 계정 로그인 / 가입 / 로그아웃 ---
         function toggleAuth(type) {
             document.getElementById('login-form').style.display = type === 'login' ? 'block' : 'none';
             document.getElementById('register-form').style.display = type === 'register' ? 'block' : 'none';
@@ -192,10 +191,7 @@
             socket.emit('login', { id, pw });
         }
         function doLogout() {
-            if(confirm('로그아웃 하시겠습니까?')) {
-                // 파라미터를 초기화하고 페이지를 새로고침하여 가장 깔끔하게 로그아웃
-                window.location.href = window.location.pathname;
-            }
+            if(confirm('로그아웃 하시겠습니까?')) { window.location.href = window.location.pathname; }
         }
 
         socket.on('errorMsg', msg => alert(msg));
@@ -205,35 +201,34 @@
             myUserId = data.userId; myNickname = data.nickname; isAdmin = data.isAdmin;
             let icon = isAdmin ? '👑관리자' : '👤';
             document.getElementById('welcomeMsg').innerText = `${icon} ${myNickname}님 환영합니다!`;
-            if(isAdmin) document.querySelectorAll('.adminCol').forEach(el => el.style.display = 'table-cell');
-            
-            // 여기서 화면 전환을 하지 않고, 직후에 오는 'updateRoomList'에서 딥링크 여부를 판단해 화면을 넘깁니다.
+            // 서버로부터 updateRoomList를 받을 때 딥링크(Sub URL) 접속 여부를 판단합니다.
         });
 
         socket.on('kicked', msg => { 
-            alert(msg); 
-            history.replaceState(null, '', window.location.pathname); // url 파라미터 지우기
-            showScreen('screen-lobby'); 
+            alert(msg); history.replaceState(null, '', window.location.pathname); showScreen('screen-lobby'); 
         });
 
-        // --- 방 리스트 및 딥링크(Sub URL) 입장 ---
+        // --- 방 리스트 및 관전 기능 업데이트 ---
         socket.on('updateRoomList', (list) => {
             const tbody = document.getElementById('roomTableBody');
             tbody.innerHTML = '';
             list.forEach(room => {
                 let status = room.state === 'waiting' ? '<span style="color:green;font-weight:bold;">대기중</span>' : '<span style="color:red;">게임중</span>';
                 let lock = room.hasPassword ? '<span class="lock-icon">🔒</span>' : '🔓';
-                let adminBtn = isAdmin ? `<button class="btn-red" style="padding:5px;font-size:12px;" onclick="event.stopPropagation(); deleteRoom('${room.id}')">폭파</button>` : '권한없음';
+                let adminBtn = isAdmin ? `<button class="btn-red" style="padding:4px;font-size:12px;" onclick="event.stopPropagation(); deleteRoom('${room.id}')">폭파</button>` : '';
+                
+                // 관전 버튼 추가
+                let spectateBtn = `<button class="btn-blue" style="padding:6px;font-size:12px;" onclick="event.stopPropagation(); spectateRoom('${room.id}')">👁️ 관전</button>`;
                 
                 tbody.innerHTML += `
                     <tr ondblclick="selectRoomToJoin('${room.id}', '${room.name}', ${room.hasPassword}, '${room.state}')">
                         <td>${room.name}</td><td>${status}</td><td>${room.players}/6명</td><td>${lock}</td>
-                        <td class="adminCol" style="${isAdmin ? '' : 'display:none;'}">${adminBtn}</td>
+                        <td>${spectateBtn} ${adminBtn}</td>
                     </tr>
                 `;
             });
 
-            // ⭐️ 로그인 직후 다이렉트 초대 링크(딥링크) 접속 처리 ⭐️
+            // 딥링크(초대 URL) 자동 참가 처리
             if (myUserId && !initialRouteHandled) {
                 initialRouteHandled = true;
                 const urlParams = new URLSearchParams(window.location.search);
@@ -241,29 +236,29 @@
                 
                 if (targetRoomId) {
                     const room = list.find(r => r.id === targetRoomId);
-                    if (room) {
-                        selectRoomToJoin(room.id, room.name, room.hasPassword, room.state);
-                    } else {
+                    if (room) { selectRoomToJoin(room.id, room.name, room.hasPassword, room.state); } 
+                    else {
                         alert('초대받은 방이 이미 종료되었거나 존재하지 않습니다.');
                         history.replaceState(null, '', window.location.pathname);
                         showScreen('screen-lobby');
                     }
-                } else {
-                    showScreen('screen-lobby');
-                }
+                } else { showScreen('screen-lobby'); }
             }
         });
 
         window.selectRoomToJoin = function(id, name, hasPw, state) {
-            if(state !== 'waiting') return alert('이미 진행 중인 게임방입니다. (어드민은 방 폭파만 가능)');
+            if(state !== 'waiting') return alert('이미 진행 중인 게임방입니다. (관전 버튼을 이용하세요)');
             selectedRoomId = id; selectedRoomRequiresPw = hasPw;
             document.getElementById('j_roomTitle').innerText = `[${name}] 참가`;
             document.getElementById('j_roomPw').style.display = hasPw ? 'block' : 'none';
             showScreen('screen-join');
         };
 
+        window.spectateRoom = function(id) {
+            socket.emit('spectateRoom', id);
+        };
+
         function cancelJoin() {
-            // 초대 링크로 들어왔다가 취소할 경우 URL 정리 후 로비로 이동
             history.replaceState(null, '', window.location.pathname);
             showScreen('screen-lobby');
         }
@@ -282,36 +277,40 @@
             socket.emit('joinRoom', { roomId: selectedRoomId, password: pw, menus });
         }
 
-        // --- 초대 링크 복사 ---
         window.copyRoomLink = function() {
             const url = window.location.origin + window.location.pathname + '?room=' + myRoomId;
-            // 모바일 환경에서도 작동하도록 클립보드 API 사용
-            navigator.clipboard.writeText(url).then(() => {
-                alert('초대 링크가 복사되었습니다!\n카톡방에 붙여넣기 하세요.');
-            }).catch(err => {
-                alert('링크 복사에 실패했습니다. 주소창을 직접 복사해주세요.');
-            });
+            navigator.clipboard.writeText(url).then(() => { alert('초대 링크가 복사되었습니다!\n카톡방에 붙여넣기 하세요.'); })
+            .catch(err => { alert('링크 복사에 실패했습니다. 주소창을 직접 복사해주세요.'); });
         };
 
-        // --- 방 폭파 및 나가기 ---
-        window.deleteRoom = function(id) { if(confirm('정말 이 방을 강제 폭파하시겠습니까?')) socket.emit('deleteRoom', id); };
-        window.reqDeleteRoom = function() { if(confirm('내 게임 방을 해체하시겠습니까?')) socket.emit('deleteRoom', myRoomId); };
-        window.leaveRoomUI = function() { 
-            history.replaceState(null, '', window.location.pathname); 
-            window.location.reload(); // 방 나가기는 가장 깔끔하게 새로고침 처리
+        // --- 데이터 관리 (취소 vs 나가기) ---
+        window.cancelParticipation = function() {
+            if(confirm('참가를 취소하시겠습니까?\n(제출한 카드가 서버에서 삭제됩니다)')) {
+                socket.emit('cancelParticipation', myRoomId);
+                history.replaceState(null, '', window.location.pathname); 
+                window.location.reload(); 
+            }
         };
+
+        window.leaveRoomUI = function() {
+            // 데이터는 살려둔 채 화면만 나감
+            history.replaceState(null, '', window.location.pathname); 
+            window.location.reload(); 
+        };
+
+        window.deleteRoom = function(id) { if(confirm('이 방을 강제 폭파하시겠습니까?')) socket.emit('deleteRoom', id); };
+        window.reqDeleteRoom = function() { if(confirm('내 게임 방을 해체하시겠습니까?')) socket.emit('deleteRoom', myRoomId); };
 
         socket.on('joined', (data) => {
             myRoomId = data.roomId;
+            history.pushState(null, '', '?room=' + data.roomId); // 딥링크 자동 생성
             
-            // 브라우저 URL에 '?room=코드' 삽입 (새로고침 없이)
-            history.pushState(null, '', '?room=' + data.roomId);
-            
-            // 하단 버튼들 표시 제어
-            document.getElementById('startBtn').style.display = data.isMaster ? 'block' : 'none';
+            // 버튼들 표시 제어 로직 (방장, 관전자, 일반 플레이어에 따라 다름)
+            document.getElementById('startBtn').style.display = (data.isMaster && data.state === 'waiting') ? 'block' : 'none';
             document.getElementById('deleteBtn').style.display = data.isMaster ? 'block' : 'none'; 
             document.getElementById('copyLinkBtn').style.display = 'block'; 
             document.getElementById('leaveBtn').style.display = 'block'; 
+            document.getElementById('cancelBtn').style.display = (!data.isSpectator && data.state === 'waiting') ? 'block' : 'none';
 
             showScreen('screen-game');
         });
@@ -329,7 +328,12 @@
             chatBox.scrollTop = chatBox.scrollHeight;
         });
 
-        window.startGame = function() { socket.emit('startGame', myRoomId); document.getElementById('startBtn').style.display = 'none'; document.getElementById('copyLinkBtn').style.display = 'none'; }
+        window.startGame = function() { 
+            socket.emit('startGame', myRoomId); 
+            document.getElementById('startBtn').style.display = 'none'; 
+            document.getElementById('copyLinkBtn').style.display = 'none';
+            document.getElementById('cancelBtn').style.display = 'none'; 
+        }
 
         // --- 2D 캔버스 엔진 ---
         const canvas = document.getElementById('gameCanvas'); const ctx = canvas.getContext('2d');
