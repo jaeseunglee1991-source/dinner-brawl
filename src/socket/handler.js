@@ -9,63 +9,148 @@ module.exports = function(io, pool, rooms) {
         }));
     };
 
-    async function runBattle(roomId) {
+    // 데미지 처리 및 부활 로직을 별도 함수로 분리 (중복 방지)
+    function applyDamageEvents(roomId, attackEvents, allAliveCards) {
+        attackEvents.forEach(ev => {
+            let t = allAliveCards.find(c => c.id === ev.targetId); 
+            let a = allAliveCards.find(c => c.id === ev.attackerId);
+            
+            if(t && t.isAlive && ev.damage > 0) {
+                t.hp -= ev.damage;
+                if(t.hp <= 0) { 
+                    if(t.skills.some(s=>s.name==='PHOENIX') && !t.revived) { 
+                        t.hp = 1; t.revived = true; 
+                        io.to(roomId).emit('battleLog', `🔥 [${t.menu}] 불사조 부활!`); 
+                    } else {
+                        t.isAlive = false; 
+                    }
+                }
+            }
+            if(a && a.isAlive && ev.attackerDamage > 0) { 
+                a.hp -= ev.attackerDamage; 
+                if(a.hp <= 0) a.isAlive = false; 
+            }
+            if(a && a.isAlive && ev.heal > 0) {
+                a.hp = Math.min(a.maxHp, a.hp + ev.heal);
+            }
+            if(a && ev.allyHealId) { 
+                let ally = allAliveCards.find(c => c.id === ev.allyHealId); 
+                if(ally && ally.isAlive) ally.hp = Math.min(ally.maxHp, ally.hp + 5); 
+            }
+        });
+    }
+
+    // ⚔️ 실시간 전투 메인 엔진
+    function runBattle(roomId) {
         const room = rooms[roomId]; if(!room) return;
         let players = room.players;
         const broadcastState = () => io.to(roomId).emit('updatePlayers', { players: Object.values(rooms[roomId].players), masterId: rooms[roomId].master });
-        io.to(roomId).emit('battleLog', "=== ⚔️ <b>저녁 메뉴 대난투를 시작합니다!</b> ⚔️ ===");
-        const getAliveTeams = () => Object.values(players).filter(p => p.deck.some(c => c.isAlive));
-        let round = 1;
+        io.to(roomId).emit('battleLog', "=== ⚔️ <b>실시간 대난투를 시작합니다!</b> ⚔️ ===");
         
-        while (getAliveTeams().length > 1) {
-            if(!rooms[roomId]) return;
-            io.to(roomId).emit('battleLog', `<div style="color:#f1c40f; font-weight:bold; margin-top:10px;">--- [대난투 Round ${round}] ---</div>`);
-            let allAliveCards = getAliveTeams().flatMap(p => p.deck.filter(c => c.isAlive));
-            let attackEvents = [];
-            for (let attacker of allAliveCards) {
-                let enemies = getAliveTeams().filter(p => p.ownerId !== attacker.ownerId).flatMap(p => p.deck.filter(c => c.isAlive));
-                if (enemies.length === 0) continue;
-                attackEvents.push(calculateAttack(attacker, getRandomItem(enemies), allAliveCards, io));
-            }
+        const getAliveTeams = () => Object.values(players).filter(p => p.deck.some(c => c.isAlive));
 
-            io.to(roomId).emit('playBrawlAnimation', attackEvents);
-            attackEvents.forEach(ev => {
-                let t = allAliveCards.find(c => c.id === ev.targetId); let a = allAliveCards.find(c => c.id === ev.attackerId);
-                if(t && t.isAlive && ev.damage > 0) {
-                    t.hp -= ev.damage;
-                    if(t.hp <= 0) { if(t.skills.some(s=>s.name==='PHOENIX') && !t.revived) { t.hp = 1; t.revived = true; io.to(roomId).emit('battleLog', `🔥 [${t.menu}] 불사조 부활!`); } else t.isAlive = false; }
-                }
-                if(a && a.isAlive && ev.attackerDamage > 0) { a.hp -= ev.attackerDamage; if(a.hp <= 0) a.isAlive = false; }
-                if(a && a.isAlive && ev.heal > 0) a.hp = Math.min(a.maxHp, a.hp + ev.heal);
-                if(a && ev.allyHealId) { let ally = allAliveCards.find(c => c.id === ev.allyHealId); if(ally && ally.isAlive) ally.hp = Math.min(ally.maxHp, ally.hp + 5); }
+        // 모든 카드에 고유 공격 속도(쿨다운) 부여
+        Object.values(players).forEach(p => {
+            p.deck.forEach(c => {
+                // 직업에 따른 공격 속도 차이 (ms 단위)
+                c.maxCooldown = (c.job === '도적' || c.job === '암살자') ? 1200 : 
+                                (c.job === '전사' || c.job === '버서커') ? 1800 : 2200;
+                
+                // 첫 공격 타이밍 분산 (0.5초 ~ 1.5초 사이)
+                c.cooldown = Math.random() * 1000 + 500; 
             });
+        });
 
-            broadcastState(); await new Promise(r => setTimeout(r, 2500));
-            round++;
-        }
+        const tickRate = 100; // 0.1초마다 서버가 전장 상태를 체크합니다.
+        
+        // 턴제(while+sleep) 대신 실시간(setInterval) 엔진 가동
+        const battleLoop = setInterval(() => {
+            if(!rooms[roomId]) return clearInterval(battleLoop);
 
-        const winnerTeam = getAliveTeams()[0];
-        if (winnerTeam) {
-            io.to(roomId).emit('battleLog', `<div style="color:#3498db; font-weight:bold; margin-top:10px;">🎉 [${winnerTeam.name}] 팀 우승! 팀 내 데스매치 시작! 🎉</div>`);
-            while (winnerTeam.deck.filter(c => c.isAlive).length > 1) {
-                if(!rooms[roomId]) return;
-                let aliveCards = winnerTeam.deck.filter(c => c.isAlive); let attackEvents = [];
-                for (let attacker of aliveCards) { let targets = aliveCards.filter(c => c.id !== attacker.id); if (targets.length === 0) continue;
-                attackEvents.push(calculateAttack(attacker, getRandomItem(targets), aliveCards, io)); }
-                io.to(roomId).emit('playBrawlAnimation', attackEvents);
-                attackEvents.forEach(ev => {
-                    let t = aliveCards.find(c => c.id === ev.targetId); let a = aliveCards.find(c => c.id === ev.attackerId);
-                    if(t) { t.hp -= ev.damage; if(t.hp <= 0) t.isAlive = false; }
-                    if(a && ev.attackerDamage > 0) { a.hp -= ev.attackerDamage; if(a.hp <= 0) a.isAlive = false; }
-                });
-                broadcastState(); await new Promise(r => setTimeout(r, 2500));
+            let aliveTeams = getAliveTeams();
+            if (aliveTeams.length <= 1) {
+                clearInterval(battleLoop);
+                const winnerTeam = aliveTeams[0];
+                if (winnerTeam) {
+                    io.to(roomId).emit('battleLog', `<div style="color:#3498db; font-weight:bold; margin-top:10px;">🎉 [${winnerTeam.name}] 팀 우승! 팀 내 데스매치 시작! 🎉</div>`);
+                    startDeathMatch(roomId, winnerTeam, broadcastState);
+                } else {
+                    io.to(roomId).emit('battleLog', "모두 전멸했습니다!");
+                }
+                return;
             }
-            const finalCard = winnerTeam.deck.find(c => c.isAlive);
-            if(finalCard) io.to(roomId).emit('gameFinished', finalCard.menu);
-            else io.to(roomId).emit('battleLog', "모두 전멸했습니다!");
-        } else { io.to(roomId).emit('battleLog', "모두 전멸했습니다!"); }
+
+            let allAliveCards = aliveTeams.flatMap(p => p.deck.filter(c => c.isAlive));
+            let attackEvents = [];
+
+            // 각 카드별 쿨다운 실시간 감소 및 공격 트리거
+            for (let attacker of allAliveCards) {
+                attacker.cooldown -= tickRate;
+                
+                // 쿨다운이 다 찬 캐릭터만 공격 실행
+                if (attacker.cooldown <= 0) {
+                    let enemies = aliveTeams.filter(p => p.ownerId !== attacker.ownerId).flatMap(p => p.deck.filter(c => c.isAlive));
+                    if (enemies.length > 0) {
+                        let target = getRandomItem(enemies);
+                        attackEvents.push(calculateAttack(attacker, target, allAliveCards, io));
+                        
+                        // 공격 후 쿨다운 재설정 (약간의 랜덤 오차를 줘서 기계적인 느낌 제거)
+                        attacker.cooldown = attacker.maxCooldown + (Math.random() * 400 - 200);
+                    }
+                }
+            }
+
+            // 이번 0.1초 동안 발생한 모든 공격을 클라이언트로 전송
+            if (attackEvents.length > 0) {
+                io.to(roomId).emit('playBrawlAnimation', attackEvents);
+                applyDamageEvents(roomId, attackEvents, allAliveCards);
+                broadcastState();
+            }
+
+        }, tickRate);
     }
 
+    // ⚔️ 실시간 팀 내 데스매치 엔진
+    function startDeathMatch(roomId, winnerTeam, broadcastState) {
+        const tickRate = 100;
+        
+        const dmLoop = setInterval(() => {
+            if(!rooms[roomId]) return clearInterval(dmLoop);
+
+            let aliveCards = winnerTeam.deck.filter(c => c.isAlive);
+            if (aliveCards.length <= 1) {
+                clearInterval(dmLoop);
+                const finalCard = aliveCards[0];
+                if(finalCard) io.to(roomId).emit('gameFinished', finalCard.menu);
+                else io.to(roomId).emit('battleLog', "모두 전멸했습니다!");
+                return;
+            }
+
+            let attackEvents = [];
+            for (let attacker of aliveCards) {
+                attacker.cooldown -= tickRate;
+                if (attacker.cooldown <= 0) {
+                    let targets = aliveCards.filter(c => c.id !== attacker.id);
+                    if (targets.length > 0) {
+                        let target = getRandomItem(targets);
+                        attackEvents.push(calculateAttack(attacker, target, aliveCards, io));
+                        attacker.cooldown = attacker.maxCooldown + (Math.random() * 400 - 200);
+                    }
+                }
+            }
+
+            if (attackEvents.length > 0) {
+                io.to(roomId).emit('playBrawlAnimation', attackEvents);
+                applyDamageEvents(roomId, attackEvents, aliveCards);
+                broadcastState();
+            }
+
+        }, tickRate);
+    }
+
+    // ==========================================
+    // 소켓 통신 기본 이벤트 (기존과 동일)
+    // ==========================================
     io.on('connection', (socket) => {
         socket.on('register', async ({ id, pw, nickname }) => {
             try {
