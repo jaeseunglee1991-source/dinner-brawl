@@ -12,14 +12,20 @@ const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
 scene.add(ambientLight);
 
 mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
-mainLight.position.set(15, 25, 15);
+mainLight.position.set(15, 30, 15);
 mainLight.castShadow = true;
-mainLight.shadow.mapSize.width = 1024;
-mainLight.shadow.mapSize.height = 1024;
+mainLight.shadow.mapSize.width = 2048; // 그림자 해상도 증가
+mainLight.shadow.mapSize.height = 2048;
+
+// 🛠️ 그림자가 맵 전체를 완벽하게 덮도록 범위 확장
+mainLight.shadow.camera.left = -25;
+mainLight.shadow.camera.right = 25;
+mainLight.shadow.camera.top = 25;
+mainLight.shadow.camera.bottom = -25;
 scene.add(mainLight);
 
-// 🎥 수정됨: 카메라를 더 높이 올리고 (Y: 30), 앞당겨서(Z: 20) 탑다운 뷰 강화
-camera.position.set(0, 30, 20);
+// 🛠️ 카메라를 더 높게(Y: 35) 띄우고 앞당겨서(Z: 25) 맵 전체와 장식물들이 모두 보이게 함
+camera.position.set(0, 35, 25);
 camera.lookAt(0, 0, 0);
 
 environmentGroup = new THREE.Group();
