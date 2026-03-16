@@ -4,7 +4,7 @@ const { AFFINITIES, SKILLS, JOBS, GRADES } = require('../data/constants');
 const random = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-// ⏱️ 전투가 약 20초 정도 지속되도록 스탯 조정
+// ⏱️ 20초 밸런스 유지
 const rollStat = () => ({ hp: random(150, 250), atk: random(15, 25) });
 
 function generateDeck(playerName, menus) {
@@ -25,11 +25,9 @@ function generateDeck(playerName, menus) {
 
     menus.forEach(menu => {
         let job = getRandomItem(JOBS);
-        
-        // ⭐ 확률에 기반한 등급 추첨
         let rand = Math.random() * 100;
         let sum = 0;
-        let grade = GRADES[GRADES.length - 1]; // 기본값: 일반
+        let grade = GRADES[GRADES.length - 1]; 
         for (let g of GRADES) {
             sum += g.prob;
             if (rand <= sum) { grade = g; break; }
@@ -80,6 +78,16 @@ function calculateAttack(attacker, target, allAliveCards, io) {
     if (has(attacker, 'LUCKY') && Math.random() < 0.77) damage += 20; 
     if (has(attacker, 'SNIPER') && Math.random() < 0.2) { damage *= 3; isCrit = true; } 
     else if (has(attacker, 'CRITICAL') && Math.random() < 0.5) { damage *= 2; isCrit = true; }
+
+    // ⛰️ 지형 단차 이점 시스템 (신규 추가)
+    let terrainRoll = Math.random();
+    if (terrainRoll < 0.15) {
+        damage = Math.floor(damage * 1.3); // 고지대 데미지 30% 증가
+        msg += ` <span style="color:#2ecc71">[⛰️고지대 강타!]</span>`;
+    } else if (terrainRoll < 0.30) {
+        damage = Math.floor(damage * 0.7); // 엄폐물로 데미지 30% 감소
+        msg += ` <span style="color:#95a5a6">[🪨단차 엄폐!]</span>`;
+    }
     
     if (has(attacker, 'IRON_FIST') && damage < 15) damage = 15;
     if (has(target, 'SHIELD')) damage = Math.floor(damage / 2);
