@@ -23,7 +23,7 @@ module.exports = function(io, pool, rooms) {
             if(a && a.isAlive && ev.heal > 0) { a.hp = Math.min(a.maxHp, a.hp + ev.heal); }
             if(a && ev.allyHealId) { 
                 let ally = allAliveCards.find(c => c.id === ev.allyHealId); 
-                if(ally && ally.isAlive) ally.hp = Math.min(ally.maxHp, ally.hp + 30); 
+                if(ally && ally.isAlive) ally.hp = Math.min(ally.maxHp, ally.hp + 20); 
             }
         });
     }
@@ -32,15 +32,18 @@ module.exports = function(io, pool, rooms) {
         const room = rooms[roomId]; if(!room) return;
         let players = room.players;
         
-        // 📼 리플레이 기록 배열 생성
         room.replay = [];
         room.initialPlayers = JSON.parse(JSON.stringify(Object.values(room.players)));
         const battleStartTime = Date.now();
 
-        // 방 전체에 소켓을 보내면서 동시에 리플레이 배열에 저장하는 함수
+        // 🛠️ 버그 수정: 리플레이에 '현재 시점의 데이터'를 복사(박제)해서 저장
         function emitToRoom(event, data) {
             io.to(roomId).emit(event, data);
-            room.replay.push({ time: Date.now() - battleStartTime, event, data });
+            room.replay.push({ 
+                time: Date.now() - battleStartTime, 
+                event, 
+                data: JSON.parse(JSON.stringify(data)) 
+            });
         }
 
         const broadcastState = () => emitToRoom('updatePlayers', { players: Object.values(rooms[roomId].players), masterId: rooms[roomId].master });
@@ -166,7 +169,6 @@ module.exports = function(io, pool, rooms) {
             io.to(roomId).emit('chatMessage', { sender: 'System', text: `👁️ ${socket.nickname}님이 관전자로 입장했습니다.` });
         });
 
-        // 📼 클라이언트가 리플레이를 요청할 때
         socket.on('requestReplay', (roomId) => {
             const room = rooms[roomId];
             if (room && room.replay && room.replay.length > 0) {
