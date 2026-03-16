@@ -1,7 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { Pool } = require('pg'); // PostgreSQL 연동 모듈 추가
+const { Pool } = require('pg');
 
 const app = express();
 const server = http.createServer(app);
@@ -9,41 +9,22 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
-// --- PostgreSQL 데이터베이스 설정 ---
-// Render 환경 변수(DATABASE_URL)를 자동으로 가져와 연결합니다.
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // 외부 DB 연결 시 필수 보안 설정
+    ssl: { rejectUnauthorized: false }
 });
 
-// 서버 시작 시 DB 테이블 세팅 및 어드민 계정 자동 생성
 async function initDB() {
     try {
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS users (
-                id VARCHAR(50) PRIMARY KEY,
-                pw VARCHAR(100) NOT NULL,
-                nickname VARCHAR(50) NOT NULL,
-                is_admin BOOLEAN DEFAULT FALSE
-            )
-        `);
-        // root 어드민 계정이 없으면 생성
-        await pool.query(`
-            INSERT INTO users (id, pw, nickname, is_admin)
-            VALUES ('root', 'Skfls1223@', '시스템관리자', TRUE)
-            ON CONFLICT (id) DO NOTHING
-        `);
+        await pool.query(`CREATE TABLE IF NOT EXISTS users (id VARCHAR(50) PRIMARY KEY, pw VARCHAR(100) NOT NULL, nickname VARCHAR(50) NOT NULL, is_admin BOOLEAN DEFAULT FALSE)`);
+        await pool.query(`INSERT INTO users (id, pw, nickname, is_admin) VALUES ('root', 'Skfls1223@', '시스템관리자', TRUE) ON CONFLICT (id) DO NOTHING`);
         console.log("✅ PostgreSQL DB 연결 및 초기화 완료!");
-    } catch (err) {
-        console.error("❌ DB 초기화 에러:", err);
-    }
+    } catch (err) { console.error("❌ DB 초기화 에러:", err); }
 }
 initDB();
 
-// --- 게임 데이터 저장소 (세션/방은 메모리 유지) ---
 const rooms = {};
 
-// 1. 7대 상성 및 30종 특수기술
 const AFFINITIES = ['SPICY', 'GREASY', 'FRESH', 'SALTY', 'SWEET', 'MINT_CHOCO', 'PINEAPPLE'];
 const SKILLS = [
     { name: 'CRITICAL', desc: '50% 확률로 2배 피해' }, { name: 'LIFESTEAL', desc: '입힌 피해의 50% 회복' },
@@ -68,19 +49,14 @@ const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const rollStat = () => ({ hp: random(10, 25), atk: random(4, 9) });
 
 function generateDeck(playerName, menus) {
-    let deck = [];
-    const num = menus.length;
-    const getId = () => Math.random().toString(36).substr(2, 9);
-
+    let deck = []; const num = menus.length; const getId = () => Math.random().toString(36).substr(2, 9);
     const applyStartStats = (card) => {
         const has = (sk) => card.skills.some(s => s.name === sk);
         if (has('TANK')) card.maxHp += 20; if (has('WEAK')) card.maxHp -= 10;
         if (has('SWORD_MASTER')) card.atk += 5; if (has('SOFT_PUNCH')) card.atk = Math.max(1, Math.floor(card.atk / 2));
         card.hp = card.maxHp; if (card.hp <= 0) { card.hp = 1; card.maxHp = 1; }
-        if (has('PHOENIX')) card.revived = false;
-        return card;
+        if (has('PHOENIX')) card.revived = false; return card;
     };
-
     if (num === 3) { menus.forEach(menu => deck.push(applyStartStats({ id: getId(), menu, owner: playerName, maxHp: rollStat().hp, atk: rollStat().atk, affinity: getRandomItem(AFFINITIES), skills: [getRandomItem(SKILLS)], isAlive: true }))); } 
     else if (num === 2) { let tHp=0, tAtk=0; for(let i=0;i<3;i++){let s=rollStat(); tHp+=s.hp; tAtk+=s.atk;} menus.forEach(menu => deck.push(applyStartStats({ id: getId(), menu, owner: playerName, maxHp: Math.floor(tHp/2), atk: Math.floor(tAtk/2), affinity: getRandomItem(AFFINITIES), skills: [getRandomItem(SKILLS)], isAlive: true }))); } 
     else if (num === 1) { let tHp=0, tAtk=0; for(let i=0;i<3;i++){let s=rollStat(); tHp+=s.hp; tAtk+=s.atk;} deck.push(applyStartStats({ id: getId(), menu: menus[0], owner: playerName, maxHp: tHp, atk: tAtk, affinity: getRandomItem(AFFINITIES), skills: [getRandomItem(SKILLS), getRandomItem(SKILLS)], isAlive: true })); }
@@ -117,8 +93,7 @@ async function runBattle(roomId) {
         io.to(roomId).emit('playBrawlAnimation', attackEvents);
 
         attackEvents.forEach(ev => {
-            let t = allAliveCards.find(c => c.id === ev.targetId);
-            let a = allAliveCards.find(c => c.id === ev.attackerId);
+            let t = allAliveCards.find(c => c.id === ev.targetId); let a = allAliveCards.find(c => c.id === ev.attackerId);
             if(t && t.isAlive && ev.damage > 0) {
                 t.hp -= ev.damage;
                 if(t.hp <= 0) { if(t.skills.some(s=>s.name==='PHOENIX') && !t.revived) { t.hp = 1; t.revived = true; io.to(roomId).emit('battleLog', `🔥 [${t.menu}] 불사조 부활!`); } else t.isAlive = false; }
@@ -128,9 +103,7 @@ async function runBattle(roomId) {
             if(a && ev.allyHealId) { let ally = allAliveCards.find(c => c.id === ev.allyHealId); if(ally && ally.isAlive) ally.hp = Math.min(ally.maxHp, ally.hp + 5); }
         });
 
-        broadcastState();
-        await new Promise(r => setTimeout(r, 2500));
-        round++;
+        broadcastState(); await new Promise(r => setTimeout(r, 2500)); round++;
     }
 
     const winnerTeam = getAliveTeams()[0];
@@ -138,13 +111,8 @@ async function runBattle(roomId) {
         io.to(roomId).emit('battleLog', `<br>🎉 <b>[${winnerTeam.name}] 팀 우승! 팀 내 데스매치 시작!</b> 🎉`);
         while (winnerTeam.deck.filter(c => c.isAlive).length > 1) {
             if(!rooms[roomId]) return; 
-            let aliveCards = winnerTeam.deck.filter(c => c.isAlive);
-            let attackEvents = [];
-            for (let attacker of aliveCards) {
-                let targets = aliveCards.filter(c => c.id !== attacker.id);
-                if (targets.length === 0) continue;
-                attackEvents.push(calculateAttack(attacker, getRandomItem(targets), aliveCards));
-            }
+            let aliveCards = winnerTeam.deck.filter(c => c.isAlive); let attackEvents = [];
+            for (let attacker of aliveCards) { let targets = aliveCards.filter(c => c.id !== attacker.id); if (targets.length === 0) continue; attackEvents.push(calculateAttack(attacker, getRandomItem(targets), aliveCards)); }
             io.to(roomId).emit('playBrawlAnimation', attackEvents);
             attackEvents.forEach(ev => {
                 let t = aliveCards.find(c => c.id === ev.targetId); let a = aliveCards.find(c => c.id === ev.attackerId);
@@ -156,15 +124,12 @@ async function runBattle(roomId) {
         const finalCard = winnerTeam.deck.find(c => c.isAlive);
         if(finalCard) io.to(roomId).emit('gameFinished', finalCard.menu);
         else io.to(roomId).emit('battleLog', "모두 전멸했습니다!");
-    } else {
-        io.to(roomId).emit('battleLog', "모두 전멸했습니다!");
-    }
+    } else { io.to(roomId).emit('battleLog', "모두 전멸했습니다!"); }
 }
 
 function calculateAttack(attacker, target, allAliveCards) {
     let damage = attacker.atk; let attackerDamage = 0, heal = 0, allyHealId = null;
     let msg = `[${attacker.menu}] -> [${target.menu}]`; let isCrit = false;
-
     const has = (card, sk) => card.skills.some(s => s.name === sk);
     const isSpec = (aff) => aff === 'MINT_CHOCO' || aff === 'PINEAPPLE';
     
@@ -205,55 +170,38 @@ function calculateAttack(attacker, target, allAliveCards) {
 }
 
 io.on('connection', (socket) => {
-    
-    // --- 계정 및 인증 시스템 (PostgreSQL DB 연동) ---
     socket.on('register', async ({ id, pw, nickname }) => {
         try {
-            // 1. ID 중복 확인
             const res = await pool.query('SELECT id FROM users WHERE id = $1', [id]);
             if (res.rows.length > 0) return socket.emit('errorMsg', '이미 존재하는 ID입니다.');
-
-            // 2. DB에 저장
             await pool.query('INSERT INTO users (id, pw, nickname) VALUES ($1, $2, $3)', [id, pw, nickname]);
             socket.emit('authSuccess', '회원가입이 완료되었습니다. 이제 로그인해주세요.');
-        } catch (err) {
-            console.error("회원가입 에러:", err);
-            socket.emit('errorMsg', '서버(DB) 오류가 발생했습니다.');
-        }
+        } catch (err) { console.error("회원가입 에러:", err); socket.emit('errorMsg', '서버(DB) 오류가 발생했습니다.'); }
     });
 
     socket.on('login', async ({ id, pw }) => {
         try {
             const res = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
             if (res.rows.length === 0) return socket.emit('errorMsg', '존재하지 않는 ID입니다.');
-
             const user = res.rows[0];
             if (user.pw !== pw) return socket.emit('errorMsg', '비밀번호가 틀렸습니다.');
             
-            socket.userId = user.id;
-            socket.nickname = user.nickname;
-            socket.isAdmin = user.is_admin;
-            
+            socket.userId = user.id; socket.nickname = user.nickname; socket.isAdmin = user.is_admin;
             socket.emit('loginSuccess', { userId: user.id, nickname: user.nickname, isAdmin: user.is_admin });
             socket.emit('updateRoomList', getRoomList());
-        } catch (err) {
-            console.error("로그인 에러:", err);
-            socket.emit('errorMsg', '서버(DB) 오류가 발생했습니다.');
-        }
+        } catch (err) { console.error("로그인 에러:", err); socket.emit('errorMsg', '서버(DB) 오류가 발생했습니다.'); }
     });
 
-    // --- 방 관리 ---
     socket.on('createRoom', ({ roomName, password, menus }) => {
         if(!socket.userId) return socket.emit('errorMsg', '로그인이 필요합니다.');
         const roomId = Math.random().toString(36).substr(2, 6);
         rooms[roomId] = { name: roomName, password: password, master: socket.userId, players: {}, state: 'waiting' };
         
-        socket.join(roomId);
-        let deck = generateDeck(socket.nickname, menus);
+        socket.join(roomId); let deck = generateDeck(socket.nickname, menus);
         deck.forEach(c => { c.roomId = roomId; c.ownerId = socket.userId; });
         rooms[roomId].players[socket.userId] = { id: socket.id, ownerId: socket.userId, name: socket.nickname, deck };
         
-        socket.emit('joined', { roomId, isMaster: true });
+        socket.emit('joined', { roomId, isMaster: true, isSpectator: false, state: 'waiting' });
         io.to(roomId).emit('updatePlayers', { players: Object.values(rooms[roomId].players), masterId: rooms[roomId].master });
         io.emit('updateRoomList', getRoomList());
     });
@@ -265,15 +213,38 @@ io.on('connection', (socket) => {
         if (room.state !== 'waiting') return socket.emit('errorMsg', '이미 게임이 시작되었습니다.');
         if (room.password && room.password !== password) return socket.emit('errorMsg', '비밀번호가 틀렸습니다.');
 
-        socket.join(roomId);
-        let deck = generateDeck(socket.nickname, menus);
+        socket.join(roomId); let deck = generateDeck(socket.nickname, menus);
         deck.forEach(c => { c.roomId = roomId; c.ownerId = socket.userId; });
         room.players[socket.userId] = { id: socket.id, ownerId: socket.userId, name: socket.nickname, deck };
         
-        socket.emit('joined', { roomId, isMaster: room.master === socket.userId });
+        socket.emit('joined', { roomId, isMaster: room.master === socket.userId, isSpectator: false, state: room.state });
         io.to(roomId).emit('updatePlayers', { players: Object.values(room.players), masterId: room.master });
         io.to(roomId).emit('chatMessage', { sender: 'System', text: `${socket.nickname}님이 입장했습니다.` });
         io.emit('updateRoomList', getRoomList());
+    });
+
+    // --- 👁️ 관전하기 모드 ---
+    socket.on('spectateRoom', (roomId) => {
+        if(!socket.userId) return socket.emit('errorMsg', '로그인이 필요합니다.');
+        const room = rooms[roomId];
+        if (!room) return socket.emit('errorMsg', '삭제되거나 존재하지 않는 방입니다.');
+
+        socket.join(roomId);
+        socket.emit('joined', { roomId, isMaster: room.master === socket.userId, isSpectator: true, state: room.state });
+        socket.emit('updatePlayers', { players: Object.values(room.players), masterId: room.master });
+        io.to(roomId).emit('chatMessage', { sender: 'System', text: `👁️ ${socket.nickname}님이 관전자로 입장했습니다.` });
+    });
+
+    // --- ❌ 참가 취소 ---
+    socket.on('cancelParticipation', (roomId) => {
+        const room = rooms[roomId];
+        if (room && room.players[socket.userId]) {
+            delete room.players[socket.userId]; // 데이터 삭제
+            socket.leave(roomId);
+            io.to(roomId).emit('updatePlayers', { players: Object.values(room.players), masterId: room.master });
+            io.to(roomId).emit('chatMessage', { sender: 'System', text: `🏃 ${socket.nickname}님이 참가를 취소했습니다.` });
+            io.emit('updateRoomList', getRoomList());
+        }
     });
 
     socket.on('deleteRoom', (roomId) => {
@@ -282,20 +253,15 @@ io.on('connection', (socket) => {
             if(socket.isAdmin || room.master === socket.userId) {
                 let kicker = socket.isAdmin ? '관리자' : '방장';
                 io.to(roomId).emit('kicked', `🚨 ${kicker}에 의해 방이 폭파되었습니다!`);
-                delete rooms[roomId];
-                io.emit('updateRoomList', getRoomList());
-            } else {
-                socket.emit('errorMsg', '방 폭파 권한이 없습니다.');
-            }
+                delete rooms[roomId]; io.emit('updateRoomList', getRoomList());
+            } else { socket.emit('errorMsg', '방 폭파 권한이 없습니다.'); }
         }
     });
 
     socket.on('chatMessage', (data) => io.to(data.roomId).emit('chatMessage', { sender: data.sender, text: data.text }));
     socket.on('startGame', (roomId) => {
         if (rooms[roomId] && rooms[roomId].master === socket.userId) {
-            rooms[roomId].state = 'playing';
-            io.emit('updateRoomList', getRoomList());
-            runBattle(roomId);
+            rooms[roomId].state = 'playing'; io.emit('updateRoomList', getRoomList()); runBattle(roomId);
         }
     });
 });
