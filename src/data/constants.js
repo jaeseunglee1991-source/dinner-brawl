@@ -19,15 +19,21 @@ const SKILLS = [
     { name: 'BLIND', desc: '50% 확률로 공격 빗나감' }, { name: 'PAPER_SHIELD', desc: '받는 모든 피해 +5 증가' }
 ];
 
+// ⏱️ 직업 특성 세분화 (atkSpeed: 공격 쿨다운 ms 단위)
+// 마법사(2600ms, 공+30), 도적/암살자(800ms, 공+0), 전사(1500ms) 등
 const JOBS = [
-    { name: '전사', hpBonus: 10, atkBonus: 2, maxMp: 20 }, { name: '마법사', hpBonus: -5, atkBonus: 5, maxMp: 100 },
-    { name: '도적', hpBonus: 0, atkBonus: 3, maxMp: 40 }, { name: '탱커', hpBonus: 30, atkBonus: -2, maxMp: 10 },
-    { name: '사제', hpBonus: 5, atkBonus: 0, maxMp: 80 }, { name: '궁수', hpBonus: -2, atkBonus: 4, maxMp: 30 },
-    { name: '버서커', hpBonus: -10, atkBonus: 8, maxMp: 50 }, { name: '팔라딘', hpBonus: 15, atkBonus: 1, maxMp: 40 },
-    { name: '암살자', hpBonus: -5, atkBonus: 6, maxMp: 30 }, { name: '요리사', hpBonus: 10, atkBonus: 1, maxMp: 20 }
+    { name: '전사', hpBonus: 20, atkBonus: 5, maxMp: 20, atkSpeed: 1500 }, 
+    { name: '마법사', hpBonus: -10, atkBonus: 30, maxMp: 100, atkSpeed: 2600 },
+    { name: '도적', hpBonus: 0, atkBonus: 0, maxMp: 40, atkSpeed: 800 }, 
+    { name: '탱커', hpBonus: 60, atkBonus: -5, maxMp: 10, atkSpeed: 2200 },
+    { name: '사제', hpBonus: 10, atkBonus: 2, maxMp: 80, atkSpeed: 2400 }, 
+    { name: '궁수', hpBonus: -5, atkBonus: 10, maxMp: 30, atkSpeed: 1200 },
+    { name: '버서커', hpBonus: -15, atkBonus: 20, maxMp: 50, atkSpeed: 1800 }, 
+    { name: '팔라딘', hpBonus: 40, atkBonus: 3, maxMp: 40, atkSpeed: 1600 },
+    { name: '암살자', hpBonus: -10, atkBonus: 12, maxMp: 30, atkSpeed: 900 }, 
+    { name: '요리사', hpBonus: 15, atkBonus: 2, maxMp: 20, atkSpeed: 1400 }
 ];
 
-// ⭐ 등급별 출현 확률 설정 (신화 1%, 전설 5%, 영웅 10%, 희귀 20%, 일반 64%)
 const GRADES = [
     { name: '신화', multi: 3.0, color: '#e74c3c', prob: 1 },
     { name: '전설', multi: 2.0, color: '#f1c40f', prob: 5 },
