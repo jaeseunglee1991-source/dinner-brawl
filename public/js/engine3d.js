@@ -2,6 +2,15 @@
 
 let projectiles = [];
 
+// 🛑 전장 이탈 방지용 좌표 보정 함수
+function clampToArena(x, z, maxRadius = 14) {
+    let dist = Math.sqrt(x*x + z*z);
+    if (dist > maxRadius) {
+        return { x: x * (maxRadius / dist), z: z * (maxRadius / dist) };
+    }
+    return { x, z };
+}
+
 window.handle3DUpdatePlayers = function(data) {
     if (window.myRoomId && window.myRoomId !== currentThemeRoom) {
         currentThemeRoom = window.myRoomId; buildEnvironment(window.myRoomId);
@@ -10,12 +19,13 @@ window.handle3DUpdatePlayers = function(data) {
     data.players.forEach(p => {
         p.deck.forEach(c => {
             if(!entities[c.id]) {
-                let startX = (Math.random() - 0.5) * 24;
-                let startZ = (Math.random() - 0.5) * 20;
+                let startX = (Math.random() - 0.5) * 16; // 스폰 반경도 줄임
+                let startZ = (Math.random() - 0.5) * 16;
+                let startY = window.getTerrainHeight ? window.getTerrainHeight(startX, startZ) + 1.2 : 1.2;
+
                 entities[c.id] = { 
                     id: c.id, menu: c.menu, job: c.job, isAlive: c.isAlive, color: c.gradeColor, 
-                    x: startX, z: startZ,
-                    y: window.getTerrainHeight ? window.getTerrainHeight(startX, startZ) : 0, // ⛰️ 초기 Y 높이 세팅
+                    x: startX, y: startY, z: startZ,
                     isAttacking: false 
                 };
                 entities[c.id].baseX = entities[c.id].x; 
@@ -51,17 +61,21 @@ window.handlePlayBrawlAnimation = function(attackEvents) {
             if (isRanged) {
                 let dx = target.baseX - attacker.baseX;
                 let dz = target.baseZ - attacker.baseZ;
-                attacker.targetX = attacker.baseX + dx * 0.15;
-                attacker.targetZ = attacker.baseZ + dz * 0.15;
+                let newX = attacker.baseX + dx * 0.15;
+                let newZ = attacker.baseZ + dz * 0.15;
+                
+                // 전장 밖으로 나가지 않게 클램프
+                let clamped = clampToArena(newX, newZ);
+                attacker.targetX = clamped.x;
+                attacker.targetZ = clamped.z;
                 
                 attacker.baseX = attacker.targetX; 
                 attacker.baseZ = attacker.targetZ; 
+
                 attacker.isAttacking = 'ranged';
 
                 setTimeout(() => {
                     let projMesh = createProjectileMesh(job);
-                    
-                    // ⛰️ 투사체 발사 시 높이 고저차 계산
                     let startY = (window.getTerrainHeight ? window.getTerrainHeight(attacker.baseX, attacker.baseZ) : 0) + 2.5;
                     let targetY = (window.getTerrainHeight ? window.getTerrainHeight(target.baseX, target.baseZ) : 0) + 1.5;
                     
@@ -85,16 +99,23 @@ window.handlePlayBrawlAnimation = function(attackEvents) {
                 let dist = Math.sqrt(dx*dx + dz*dz);
                 let stopDist = 3.5; 
 
+                let newX, newZ;
                 if (dist > stopDist) {
-                    attacker.targetX = attacker.baseX + (dx / dist) * (dist - stopDist);
-                    attacker.targetZ = attacker.baseZ + (dz / dist) * (dist - stopDist);
+                    newX = attacker.baseX + (dx / dist) * (dist - stopDist);
+                    newZ = attacker.baseZ + (dz / dist) * (dist - stopDist);
                 } else {
-                    attacker.targetX = attacker.baseX;
-                    attacker.targetZ = attacker.baseZ;
+                    newX = attacker.baseX;
+                    newZ = attacker.baseZ;
                 }
+                
+                // 전장 밖으로 나가지 않게 클램프
+                let clamped = clampToArena(newX, newZ);
+                attacker.targetX = clamped.x;
+                attacker.targetZ = clamped.z;
                 
                 attacker.baseX = attacker.targetX; 
                 attacker.baseZ = attacker.targetZ; 
+
                 attacker.isAttacking = 'melee';
 
                 setTimeout(() => applyDamageEffect(ev, target), 800); 
@@ -128,21 +149,18 @@ function gameLoop() {
 
         let mesh = meshMap[e.id];
         
-        // 🐢 이동 처리
         if(e.targetX !== undefined) e.x += (e.targetX - e.x) * 0.05;
         if(e.targetZ !== undefined) e.z += (e.targetZ - e.z) * 0.05;
         
-        // ⛰️ 지형 단차 높이 읽기 및 부드러운 승강 처리 (핵심)
         let targetHeight = window.getTerrainHeight ? window.getTerrainHeight(e.x, e.z) + 1.2 : 1.2;
         e.y = e.y || targetHeight;
-        e.y += (targetHeight - e.y) * 0.15; // 부드럽게 지형을 타고 오름
+        e.y += (targetHeight - e.y) * 0.15; 
         
         let isMoving = Math.abs(e.targetX - e.x) > 0.1 || Math.abs(e.targetZ - e.z) > 0.1;
         let jumpY = isMoving ? Math.abs(Math.sin(time * 4)) * 0.6 : Math.sin(time * 1.5 + e.x) * 0.05;
         
         mesh.position.set(e.x, e.y + jumpY, e.z);
         
-        // 전투 모션
         if (e.isAttacking === 'melee') {
             mesh.rotation.y = Math.atan2(e.x - e.baseX, e.z - e.baseZ);
             if (e.job === '탱커') { mesh.rotation.x = Math.PI / 4; } 
@@ -159,7 +177,6 @@ function gameLoop() {
         }
     });
     
-    // 🏹 투사체 연산 (고저차 반영)
     for (let i = projectiles.length - 1; i >= 0; i--) {
         let p = projectiles[i];
         p.progress += 0.03; 
@@ -171,12 +188,11 @@ function gameLoop() {
             p.mesh.position.x = p.startX + (p.targetX - p.startX) * p.progress;
             p.mesh.position.z = p.startZ + (p.targetZ - p.startZ) * p.progress;
             
-            // 시작점과 도착점의 높이 차이를 자연스럽게 보간
             let currentBaseY = p.startY + (p.targetY - p.startY) * p.progress;
             
             if (p.job === '궁수') {
                 p.mesh.rotation.z = Math.atan2(p.targetX - p.startX, p.targetZ - p.startZ);
-                p.mesh.position.y = currentBaseY + Math.sin(p.progress * Math.PI) * 4.0; // 궤적
+                p.mesh.position.y = currentBaseY + Math.sin(p.progress * Math.PI) * 4.0; 
             } else if (p.job === '암살자') {
                 p.mesh.rotation.y += 0.4; 
                 p.mesh.position.y = currentBaseY;
