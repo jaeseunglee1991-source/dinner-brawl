@@ -44,7 +44,6 @@ const SKILLS = [
     { name: 'BLIND', desc: '50% 확률로 공격 빗나감' }, { name: 'PAPER_SHIELD', desc: '받는 모든 피해 +5 증가' }
 ];
 
-// 직업 및 등급 추가
 const JOBS = [
     { name: '전사', hpBonus: 10, atkBonus: 2, maxMp: 20 }, { name: '마법사', hpBonus: -5, atkBonus: 5, maxMp: 100 },
     { name: '도적', hpBonus: 0, atkBonus: 3, maxMp: 40 }, { name: '탱커', hpBonus: 30, atkBonus: -2, maxMp: 10 },
@@ -82,19 +81,12 @@ function generateDeck(playerName, menus) {
         let baseAtk = rollStat().atk;
 
         deck.push(applyStartStats({ 
-            id: getId(), 
-            menu: menu, 
-            owner: playerName, 
-            grade: grade.name,
-            gradeColor: grade.color,
-            job: job.name,
+            id: getId(), menu: menu, owner: playerName, 
+            grade: grade.name, gradeColor: grade.color, job: job.name,
             maxHp: Math.floor(baseHp * grade.multi) + job.hpBonus, 
             atk: Math.floor(baseAtk * grade.multi) + job.atkBonus,
-            maxMp: job.maxMp,
-            mp: job.maxMp,
-            affinity: getRandomItem(AFFINITIES), 
-            skills: [getRandomItem(SKILLS)], // 스킬 1개로 고정
-            isAlive: true 
+            maxMp: job.maxMp, mp: job.maxMp, affinity: getRandomItem(AFFINITIES), 
+            skills: [getRandomItem(SKILLS)], isAlive: true 
         }));
     });
     return deck;
@@ -116,7 +108,7 @@ async function runBattle(roomId) {
     
     while (getAliveTeams().length > 1) {
         if(!rooms[roomId]) return;
-        io.to(roomId).emit('battleLog', `<br><b>--- [대난투 Round ${round}] ---</b>`);
+        io.to(roomId).emit('battleLog', `<div style="color:#f1c40f; font-weight:bold; margin-top:10px;">--- [대난투 Round ${round}] ---</div>`);
         let allAliveCards = getAliveTeams().flatMap(p => p.deck.filter(c => c.isAlive));
         let attackEvents = [];
         for (let attacker of allAliveCards) {
@@ -143,7 +135,7 @@ async function runBattle(roomId) {
 
     const winnerTeam = getAliveTeams()[0];
     if (winnerTeam) {
-        io.to(roomId).emit('battleLog', `<br>🎉 <b>[${winnerTeam.name}] 팀 우승! 팀 내 데스매치 시작!</b> 🎉`);
+        io.to(roomId).emit('battleLog', `<div style="color:#3498db; font-weight:bold; margin-top:10px;">🎉 [${winnerTeam.name}] 팀 우승! 팀 내 데스매치 시작! 🎉</div>`);
         while (winnerTeam.deck.filter(c => c.isAlive).length > 1) {
             if(!rooms[roomId]) return;
             let aliveCards = winnerTeam.deck.filter(c => c.isAlive); let attackEvents = [];
@@ -166,9 +158,8 @@ async function runBattle(roomId) {
 function calculateAttack(attacker, target, allAliveCards) {
     let damage = attacker.atk;
     let attackerDamage = 0, heal = 0, allyHealId = null;
-    let msg = `[${attacker.menu}] -> [${target.menu}]`; let isCrit = false;
+    let msg = `[${attacker.menu}] ⚔️ [${target.menu}]`; let isCrit = false;
     
-    // 공격 시 MP 소모 로직 추가
     if (attacker.mp >= 5) { attacker.mp -= 5; }
 
     const has = (card, sk) => card.skills.some(s => s.name === sk);
@@ -211,7 +202,7 @@ function calculateAttack(attacker, target, allAliveCards) {
     if(allies.length > 0) allyHealId = getRandomItem(allies).id; }
     if (has(attacker, 'DOUBLE_ATTACK') && Math.random() < 0.3) damage *= 2;
     
-    io.to(attacker.roomId).emit('battleLog', msg + ` [피해: ${damage}]`);
+    io.to(attacker.roomId).emit('battleLog', msg + ` <span style="color:#e74c3c">[-${damage}]</span>`);
     return { attackerId: attacker.id, targetId: target.id, damage, attackerDamage, heal, allyHealId, isCrit, msg };
 }
 
