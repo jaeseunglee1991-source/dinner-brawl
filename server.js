@@ -10,7 +10,7 @@ app.use(express.static('public'));
 
 const rooms = {};
 
-// 1. 특성 7개 (기본 5개 + 특수 2개)
+// 1. 특성 7개 및 스킬 정의
 const AFFINITIES = ['SPICY', 'GREASY', 'FRESH', 'SALTY', 'SWEET', 'MINT_CHOCO', 'PINEAPPLE'];
 const SKILLS = [
     { name: 'CRITICAL', desc: '50% 확률로 2배 피해' },
@@ -30,8 +30,6 @@ const rollStat = () => ({ hp: random(10, 25), atk: random(4, 9) });
 function generateDeck(playerName, menus) {
     let deck = [];
     const num = menus.length;
-
-    // 카드의 고유 ID 부여 (2D 애니메이션 추적용)
     const getId = () => Math.random().toString(36).substr(2, 9);
 
     if (num === 3) {
@@ -58,7 +56,11 @@ async function runBattle(roomId) {
     const room = rooms[roomId];
     let players = room.players;
     
-    const broadcastState = () => io.to(roomId).emit('updatePlayers', Object.values(rooms[roomId].players));
+    // 상태 브로드캐스트 (방장 정보 포함)
+    const broadcastState = () => io.to(roomId).emit('updatePlayers', { 
+        players: Object.values(rooms[roomId].players), 
+        masterId: rooms[roomId].master 
+    });
 
     io.to(roomId).emit('battleLog', "=== ⚔️ <b>저녁 메뉴 대난투를 시작합니다!</b> ⚔️ ===");
     const getAliveTeams = () => Object.values(players).filter(p => p.deck.some(c => c.isAlive));
@@ -68,22 +70,17 @@ async function runBattle(roomId) {
         io.to(roomId).emit('battleLog', `<br><b>--- [대난투 Round ${round}] ---</b>`);
         
         let allAliveCards = getAliveTeams().flatMap(p => p.deck.filter(c => c.isAlive));
-        let attackEvents = []; // 2D 애니메이션을 위한 공격 이벤트 모음
+        let attackEvents = [];
 
-        // 1. 살아있는 모든 카드가 타겟을 정하고 데미지를 계산 (동시 처리)
         for (let attacker of allAliveCards) {
             let enemies = getAliveTeams().filter(p => p.id !== attacker.ownerId).flatMap(p => p.deck.filter(c => c.isAlive));
             if (enemies.length === 0) continue;
-            
             let target = getRandomItem(enemies);
-            let result = calculateAttack(attacker, target);
-            attackEvents.push(result);
+            attackEvents.push(calculateAttack(attacker, target));
         }
 
-        // 2. 클라이언트에 2D 애니메이션(대쉬 및 데미지) 재생 명령 전송
         io.to(roomId).emit('playBrawlAnimation', attackEvents);
 
-        // 3. 실제 데미지 적용 및 사망 처리
         attackEvents.forEach(ev => {
             let target = allAliveCards.find(c => c.id === ev.targetId);
             let attacker = allAliveCards.find(c => c.id === ev.attackerId);
@@ -92,7 +89,7 @@ async function runBattle(roomId) {
                 if(target.hp <= 0) target.isAlive = false;
             }
             if(attacker && attacker.isAlive && ev.attackerDamage > 0) {
-                attacker.hp -= ev.attackerDamage; // 자해, 폭발 등
+                attacker.hp -= ev.attackerDamage;
                 if(attacker.hp <= 0) attacker.isAlive = false;
             }
             if(attacker && attacker.isAlive && ev.heal > 0) {
@@ -102,11 +99,10 @@ async function runBattle(roomId) {
         });
 
         broadcastState();
-        await new Promise(r => setTimeout(r, 2500)); // 2D 애니메이션이 끝날 때까지 2.5초 대기
+        await new Promise(r => setTimeout(r, 2500));
         round++;
     }
 
-    // 팀 내 결승전 (로직 동일하게 동시 타격)
     const winnerTeam = getAliveTeams()[0];
     if (winnerTeam) {
         io.to(roomId).emit('battleLog', `<br>🎉 <b>[${winnerTeam.name}] 팀 우승! 팀 내 데스매치 시작!</b> 🎉`);
@@ -134,34 +130,22 @@ async function runBattle(roomId) {
     }
 }
 
-// 상성 및 데미지 계산 로직
 function calculateAttack(attacker, target) {
     let damage = attacker.atk;
-    let attackerDamage = 0;
-    let heal = 0;
+    let attackerDamage = 0, heal = 0;
     let msg = `[${attacker.menu}] -> [${target.menu}]`;
     let isCrit = false;
 
     const has = (sk) => attacker.skills.some(s => s.name === sk);
-
-    // 특수 특성 상호작용 (민초 vs 파인애플)
     const isSpecial = (aff) => aff === 'MINT_CHOCO' || aff === 'PINEAPPLE';
     
     if (isSpecial(attacker.affinity) && isSpecial(target.affinity) && attacker.affinity !== target.affinity) {
-        // 둘이 만나면 폭발
-        damage = 999;
-        attackerDamage = 999;
-        msg += ` 💥세계관 붕괴 폭발!!💥`;
+        damage = 999; attackerDamage = 999; msg += ` 💥세계관 붕괴 폭발!!💥`;
     } else if (isSpecial(attacker.affinity) && !isSpecial(target.affinity)) {
-        damage *= 2; // 특수는 일반에게 2배
-        msg += ` (특수 압도!)`;
+        damage *= 2; msg += ` (특수 압도!)`;
     } else {
-        // 기본 상성 5각 관계 (매콤>느끼>깔끔>짭짤>달콤>매콤)
         const basicWin = { 'SPICY':'GREASY', 'GREASY':'FRESH', 'FRESH':'SALTY', 'SALTY':'SWEET', 'SWEET':'SPICY' };
-        if (basicWin[attacker.affinity] === target.affinity) {
-            damage = Math.floor(damage * 1.5);
-            msg += ` (상성 우위)`;
-        }
+        if (basicWin[attacker.affinity] === target.affinity) { damage = Math.floor(damage * 1.5); msg += ` (상성 우위)`; }
     }
 
     if (has('CRITICAL') && Math.random() < 0.5) { damage *= 2; isCrit = true; }
@@ -170,13 +154,20 @@ function calculateAttack(attacker, target) {
     if (has('KAMIKAZE') && Math.random() < 0.1) { damage += 30; attackerDamage = 999; msg += ` 자폭!`; }
 
     io.to(attacker.roomId).emit('battleLog', msg + ` [피해: ${damage}]`);
-
     return { attackerId: attacker.id, targetId: target.id, damage, attackerDamage, heal, isCrit, msg };
 }
 
 io.on('connection', (socket) => {
-    socket.on('joinRoom', ({ roomId, playerName, menus }) => {
-        if (!rooms[roomId]) rooms[roomId] = { master: socket.id, players: {}, state: 'waiting' };
+    // 스타크래프트 방식: action('create' 또는 'join')으로 구분
+    socket.on('joinRoom', ({ action, roomId, playerName, menus }) => {
+        if (action === 'create') {
+            if (rooms[roomId]) return socket.emit('errorMsg', '이미 존재하는 방 이름입니다.');
+            rooms[roomId] = { master: socket.id, players: {}, state: 'waiting' };
+        } else if (action === 'join') {
+            if (!rooms[roomId]) return socket.emit('errorMsg', '존재하지 않는 방입니다. 방 이름을 확인하세요.');
+            if (rooms[roomId].state !== 'waiting') return socket.emit('errorMsg', '이미 게임이 시작된 방입니다.');
+        }
+
         socket.join(roomId);
         let deck = generateDeck(playerName, menus);
         deck.forEach(c => c.roomId = roomId);
@@ -184,14 +175,11 @@ io.on('connection', (socket) => {
         rooms[roomId].players[socket.id] = { id: socket.id, name: playerName, deck };
         
         socket.emit('joined', { isMaster: rooms[roomId].master === socket.id });
-        io.to(roomId).emit('updatePlayers', Object.values(rooms[roomId].players));
+        io.to(roomId).emit('updatePlayers', { players: Object.values(rooms[roomId].players), masterId: rooms[roomId].master });
         io.to(roomId).emit('chatMessage', { sender: 'System', text: `${playerName}님이 입장했습니다.` });
     });
 
-    // 실시간 채팅 수신 및 브로드캐스트
-    socket.on('chatMessage', (data) => {
-        io.to(data.roomId).emit('chatMessage', { sender: data.sender, text: data.text });
-    });
+    socket.on('chatMessage', (data) => io.to(data.roomId).emit('chatMessage', { sender: data.sender, text: data.text }));
 
     socket.on('startGame', (roomId) => {
         if (rooms[roomId] && rooms[roomId].master === socket.id) {
