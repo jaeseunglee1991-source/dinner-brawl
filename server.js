@@ -26,19 +26,6 @@ initDB();
 const rooms = {};
 
 const AFFINITIES = ['SPICY', 'GREASY', 'FRESH', 'SALTY', 'SWEET', 'MINT_CHOCO', 'PINEAPPLE'];
-const JOBS = [
-    { name: '전사', hpBonus: 10, atkBonus: 2, maxMp: 20 }, { name: '마법사', hpBonus: -5, atkBonus: 5, maxMp: 100 },
-    { name: '도적', hpBonus: 0, atkBonus: 3, maxMp: 40 }, { name: '탱커', hpBonus: 30, atkBonus: -2, maxMp: 10 },
-    { name: '사제', hpBonus: 5, atkBonus: 0, maxMp: 80 }, { name: '궁수', hpBonus: -2, atkBonus: 4, maxMp: 30 },
-    { name: '버서커', hpBonus: -10, atkBonus: 8, maxMp: 50 }, { name: '팔라딘', hpBonus: 15, atkBonus: 1, maxMp: 40 },
-    { name: '암살자', hpBonus: -5, atkBonus: 6, maxMp: 30 }, { name: '요리사', hpBonus: 10, atkBonus: 1, maxMp: 20 }
-];
-
-const GRADES = [
-    { name: '일반', multi: 1.0, color: '#bdc3c7' }, { name: '희귀', multi: 1.2, color: '#3498db' },
-    { name: '영웅', multi: 1.5, color: '#9b59b6' }, { name: '전설', multi: 2.0, color: '#f1c40f' },
-    { name: '신화', multi: 3.0, color: '#e74c3c' }
-];
 const SKILLS = [
     { name: 'CRITICAL', desc: '50% 확률로 2배 피해' }, { name: 'LIFESTEAL', desc: '입힌 피해의 50% 회복' },
     { name: 'DOUBLE_ATTACK', desc: '30% 확률로 한 번 더 타격' }, { name: 'GIANT_KILLER', desc: '체력 높은 적에게 1.5배 피해' },
@@ -57,14 +44,28 @@ const SKILLS = [
     { name: 'BLIND', desc: '50% 확률로 공격 빗나감' }, { name: 'PAPER_SHIELD', desc: '받는 모든 피해 +5 증가' }
 ];
 
+// 직업 및 등급 추가
+const JOBS = [
+    { name: '전사', hpBonus: 10, atkBonus: 2, maxMp: 20 }, { name: '마법사', hpBonus: -5, atkBonus: 5, maxMp: 100 },
+    { name: '도적', hpBonus: 0, atkBonus: 3, maxMp: 40 }, { name: '탱커', hpBonus: 30, atkBonus: -2, maxMp: 10 },
+    { name: '사제', hpBonus: 5, atkBonus: 0, maxMp: 80 }, { name: '궁수', hpBonus: -2, atkBonus: 4, maxMp: 30 },
+    { name: '버서커', hpBonus: -10, atkBonus: 8, maxMp: 50 }, { name: '팔라딘', hpBonus: 15, atkBonus: 1, maxMp: 40 },
+    { name: '암살자', hpBonus: -5, atkBonus: 6, maxMp: 30 }, { name: '요리사', hpBonus: 10, atkBonus: 1, maxMp: 20 }
+];
+
+const GRADES = [
+    { name: '일반', multi: 1.0, color: '#bdc3c7' }, { name: '희귀', multi: 1.2, color: '#3498db' },
+    { name: '영웅', multi: 1.5, color: '#9b59b6' }, { name: '전설', multi: 2.0, color: '#f1c40f' },
+    { name: '신화', multi: 3.0, color: '#e74c3c' }
+];
+
 const random = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const rollStat = () => ({ hp: random(10, 25), atk: random(4, 9) });
 
 function generateDeck(playerName, menus) {
-    let deck = []; const num = menus.length;
+    let deck = [];
     const getId = () => Math.random().toString(36).substr(2, 9);
-    
     const applyStartStats = (card) => {
         const has = (sk) => card.skills.some(s => s.name === sk);
         if (has('TANK')) card.maxHp += 20; if (has('WEAK')) card.maxHp -= 10;
@@ -92,7 +93,7 @@ function generateDeck(playerName, menus) {
             maxMp: job.maxMp,
             mp: job.maxMp,
             affinity: getRandomItem(AFFINITIES), 
-            skills: [getRandomItem(SKILLS)], // 무조건 1개만 부여
+            skills: [getRandomItem(SKILLS)], // 스킬 1개로 고정
             isAlive: true 
         }));
     });
@@ -109,17 +110,15 @@ async function runBattle(roomId) {
     const room = rooms[roomId]; if(!room) return;
     let players = room.players;
     const broadcastState = () => io.to(roomId).emit('updatePlayers', { players: Object.values(rooms[roomId].players), masterId: rooms[roomId].master });
-
     io.to(roomId).emit('battleLog', "=== ⚔️ <b>저녁 메뉴 대난투를 시작합니다!</b> ⚔️ ===");
     const getAliveTeams = () => Object.values(players).filter(p => p.deck.some(c => c.isAlive));
-    
     let round = 1;
+    
     while (getAliveTeams().length > 1) {
-        if(!rooms[roomId]) return; 
+        if(!rooms[roomId]) return;
         io.to(roomId).emit('battleLog', `<br><b>--- [대난투 Round ${round}] ---</b>`);
         let allAliveCards = getAliveTeams().flatMap(p => p.deck.filter(c => c.isAlive));
         let attackEvents = [];
-
         for (let attacker of allAliveCards) {
             let enemies = getAliveTeams().filter(p => p.ownerId !== attacker.ownerId).flatMap(p => p.deck.filter(c => c.isAlive));
             if (enemies.length === 0) continue;
@@ -127,7 +126,6 @@ async function runBattle(roomId) {
         }
 
         io.to(roomId).emit('playBrawlAnimation', attackEvents);
-
         attackEvents.forEach(ev => {
             let t = allAliveCards.find(c => c.id === ev.targetId); let a = allAliveCards.find(c => c.id === ev.attackerId);
             if(t && t.isAlive && ev.damage > 0) {
@@ -139,16 +137,18 @@ async function runBattle(roomId) {
             if(a && ev.allyHealId) { let ally = allAliveCards.find(c => c.id === ev.allyHealId); if(ally && ally.isAlive) ally.hp = Math.min(ally.maxHp, ally.hp + 5); }
         });
 
-        broadcastState(); await new Promise(r => setTimeout(r, 2500)); round++;
+        broadcastState(); await new Promise(r => setTimeout(r, 2500));
+        round++;
     }
 
     const winnerTeam = getAliveTeams()[0];
     if (winnerTeam) {
         io.to(roomId).emit('battleLog', `<br>🎉 <b>[${winnerTeam.name}] 팀 우승! 팀 내 데스매치 시작!</b> 🎉`);
         while (winnerTeam.deck.filter(c => c.isAlive).length > 1) {
-            if(!rooms[roomId]) return; 
+            if(!rooms[roomId]) return;
             let aliveCards = winnerTeam.deck.filter(c => c.isAlive); let attackEvents = [];
-            for (let attacker of aliveCards) { let targets = aliveCards.filter(c => c.id !== attacker.id); if (targets.length === 0) continue; attackEvents.push(calculateAttack(attacker, getRandomItem(targets), aliveCards)); }
+            for (let attacker of aliveCards) { let targets = aliveCards.filter(c => c.id !== attacker.id); if (targets.length === 0) continue;
+            attackEvents.push(calculateAttack(attacker, getRandomItem(targets), aliveCards)); }
             io.to(roomId).emit('playBrawlAnimation', attackEvents);
             attackEvents.forEach(ev => {
                 let t = aliveCards.find(c => c.id === ev.targetId); let a = aliveCards.find(c => c.id === ev.attackerId);
@@ -164,8 +164,13 @@ async function runBattle(roomId) {
 }
 
 function calculateAttack(attacker, target, allAliveCards) {
-    let damage = attacker.atk; let attackerDamage = 0, heal = 0, allyHealId = null;
+    let damage = attacker.atk;
+    let attackerDamage = 0, heal = 0, allyHealId = null;
     let msg = `[${attacker.menu}] -> [${target.menu}]`; let isCrit = false;
+    
+    // 공격 시 MP 소모 로직 추가
+    if (attacker.mp >= 5) { attacker.mp -= 5; }
+
     const has = (card, sk) => card.skills.some(s => s.name === sk);
     const isSpec = (aff) => aff === 'MINT_CHOCO' || aff === 'PINEAPPLE';
     
@@ -174,19 +179,23 @@ function calculateAttack(attacker, target, allAliveCards) {
     if (has(target, 'NINJA') && Math.random() < 0.3) return { attackerId: attacker.id, targetId: target.id, damage: 0, msg: msg + " (회피!)" };
     if (has(target, 'GUARDIAN') && Math.random() < 0.15) return { attackerId: attacker.id, targetId: target.id, damage: 0, msg: msg + " (완벽방어)" };
     if ((has(attacker, 'CLUMSY') && Math.random() < 0.3) || (has(attacker, 'BLIND') && Math.random() < 0.5)) return { attackerId: attacker.id, targetId: target.id, damage: 0, msg: msg + " (빗나감!)" };
-
-    if (isSpec(attacker.affinity) && isSpec(target.affinity) && attacker.affinity !== target.affinity) { damage = 999; attackerDamage = 999; msg += ` 💥세계관 붕괴💥`; } 
-    else if (isSpec(attacker.affinity) && !isSpec(target.affinity)) { damage *= 2; msg += ` (특수 압도)`; } 
-    else { const basicWin = { 'SPICY':'GREASY', 'GREASY':'FRESH', 'FRESH':'SALTY', 'SALTY':'SWEET', 'SWEET':'SPICY' }; if (basicWin[attacker.affinity] === target.affinity) { damage = Math.floor(damage * 1.5); msg += ` (상성 우위)`; } }
+    
+    if (isSpec(attacker.affinity) && isSpec(target.affinity) && attacker.affinity !== target.affinity) { damage = 999; attackerDamage = 999; msg += ` 💥세계관 붕괴💥`;
+    } 
+    else if (isSpec(attacker.affinity) && !isSpec(target.affinity)) { damage *= 2; msg += ` (특수 압도)`;
+    } 
+    else { const basicWin = { 'SPICY':'GREASY', 'GREASY':'FRESH', 'FRESH':'SALTY', 'SALTY':'SWEET', 'SWEET':'SPICY' };
+    if (basicWin[attacker.affinity] === target.affinity) { damage = Math.floor(damage * 1.5); msg += ` (상성 우위)`;
+    } }
 
     if (has(attacker, 'BERSERKER') && attacker.hp <= attacker.maxHp / 2) damage *= 2;
     if (has(attacker, 'BULLY') && target.hp < attacker.hp) damage = Math.floor(damage * 1.5);
     if (has(attacker, 'GIANT_KILLER') && target.hp > attacker.hp) damage = Math.floor(damage * 1.5);
     if (has(attacker, 'MAGICIAN') && Math.random() < 0.2) { damage = 20; msg += ` (마법 피해)`; }
     if (has(attacker, 'LUCKY') && Math.random() < 0.77) damage += 7;
-    if (has(attacker, 'SNIPER') && Math.random() < 0.2) { damage *= 3; isCrit = true; } else if (has(attacker, 'CRITICAL') && Math.random() < 0.5) { damage *= 2; isCrit = true; }
+    if (has(attacker, 'SNIPER') && Math.random() < 0.2) { damage *= 3; isCrit = true;
+    } else if (has(attacker, 'CRITICAL') && Math.random() < 0.5) { damage *= 2; isCrit = true; }
     if (has(attacker, 'IRON_FIST') && damage < 10) damage = 10;
-    
     if (has(target, 'SHIELD')) damage = Math.floor(damage / 2);
     if (has(target, 'CURSED')) damage = Math.floor(damage * 1.5);
     if (has(target, 'PAPER_SHIELD')) damage += 5;
@@ -198,9 +207,10 @@ function calculateAttack(attacker, target, allAliveCards) {
     if (has(attacker, 'FRENZY')) attacker.atk += 2;
     if (has(attacker, 'COMBO')) attacker.atk += 1;
     
-    if (has(attacker, 'HEALER')) { let allies = allAliveCards.filter(c => c.owner === attacker.owner && c.id !== attacker.id); if(allies.length > 0) allyHealId = getRandomItem(allies).id; }
+    if (has(attacker, 'HEALER')) { let allies = allAliveCards.filter(c => c.owner === attacker.owner && c.id !== attacker.id);
+    if(allies.length > 0) allyHealId = getRandomItem(allies).id; }
     if (has(attacker, 'DOUBLE_ATTACK') && Math.random() < 0.3) damage *= 2;
-
+    
     io.to(attacker.roomId).emit('battleLog', msg + ` [피해: ${damage}]`);
     return { attackerId: attacker.id, targetId: target.id, damage, attackerDamage, heal, allyHealId, isCrit, msg };
 }
@@ -259,7 +269,6 @@ io.on('connection', (socket) => {
         io.emit('updateRoomList', getRoomList());
     });
 
-    // --- 👁️ 관전하기 모드 ---
     socket.on('spectateRoom', (roomId) => {
         if(!socket.userId) return socket.emit('errorMsg', '로그인이 필요합니다.');
         const room = rooms[roomId];
@@ -271,11 +280,10 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('chatMessage', { sender: 'System', text: `👁️ ${socket.nickname}님이 관전자로 입장했습니다.` });
     });
 
-    // --- ❌ 참가 취소 ---
     socket.on('cancelParticipation', (roomId) => {
         const room = rooms[roomId];
         if (room && room.players[socket.userId]) {
-            delete room.players[socket.userId]; // 데이터 삭제
+            delete room.players[socket.userId];
             socket.leave(roomId);
             io.to(roomId).emit('updatePlayers', { players: Object.values(room.players), masterId: room.master });
             io.to(roomId).emit('chatMessage', { sender: 'System', text: `🏃 ${socket.nickname}님이 참가를 취소했습니다.` });
