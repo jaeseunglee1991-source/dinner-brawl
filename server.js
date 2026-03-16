@@ -26,6 +26,19 @@ initDB();
 const rooms = {};
 
 const AFFINITIES = ['SPICY', 'GREASY', 'FRESH', 'SALTY', 'SWEET', 'MINT_CHOCO', 'PINEAPPLE'];
+const JOBS = [
+    { name: '전사', hpBonus: 10, atkBonus: 2, maxMp: 20 }, { name: '마법사', hpBonus: -5, atkBonus: 5, maxMp: 100 },
+    { name: '도적', hpBonus: 0, atkBonus: 3, maxMp: 40 }, { name: '탱커', hpBonus: 30, atkBonus: -2, maxMp: 10 },
+    { name: '사제', hpBonus: 5, atkBonus: 0, maxMp: 80 }, { name: '궁수', hpBonus: -2, atkBonus: 4, maxMp: 30 },
+    { name: '버서커', hpBonus: -10, atkBonus: 8, maxMp: 50 }, { name: '팔라딘', hpBonus: 15, atkBonus: 1, maxMp: 40 },
+    { name: '암살자', hpBonus: -5, atkBonus: 6, maxMp: 30 }, { name: '요리사', hpBonus: 10, atkBonus: 1, maxMp: 20 }
+];
+
+const GRADES = [
+    { name: '일반', multi: 1.0, color: '#bdc3c7' }, { name: '희귀', multi: 1.2, color: '#3498db' },
+    { name: '영웅', multi: 1.5, color: '#9b59b6' }, { name: '전설', multi: 2.0, color: '#f1c40f' },
+    { name: '신화', multi: 3.0, color: '#e74c3c' }
+];
 const SKILLS = [
     { name: 'CRITICAL', desc: '50% 확률로 2배 피해' }, { name: 'LIFESTEAL', desc: '입힌 피해의 50% 회복' },
     { name: 'DOUBLE_ATTACK', desc: '30% 확률로 한 번 더 타격' }, { name: 'GIANT_KILLER', desc: '체력 높은 적에게 1.5배 피해' },
@@ -49,17 +62,40 @@ const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const rollStat = () => ({ hp: random(10, 25), atk: random(4, 9) });
 
 function generateDeck(playerName, menus) {
-    let deck = []; const num = menus.length; const getId = () => Math.random().toString(36).substr(2, 9);
+    let deck = []; const num = menus.length;
+    const getId = () => Math.random().toString(36).substr(2, 9);
+    
     const applyStartStats = (card) => {
         const has = (sk) => card.skills.some(s => s.name === sk);
         if (has('TANK')) card.maxHp += 20; if (has('WEAK')) card.maxHp -= 10;
-        if (has('SWORD_MASTER')) card.atk += 5; if (has('SOFT_PUNCH')) card.atk = Math.max(1, Math.floor(card.atk / 2));
+        if (has('SWORD_MASTER')) card.atk += 5;
+        if (has('SOFT_PUNCH')) card.atk = Math.max(1, Math.floor(card.atk / 2));
         card.hp = card.maxHp; if (card.hp <= 0) { card.hp = 1; card.maxHp = 1; }
         if (has('PHOENIX')) card.revived = false; return card;
     };
-    if (num === 3) { menus.forEach(menu => deck.push(applyStartStats({ id: getId(), menu, owner: playerName, maxHp: rollStat().hp, atk: rollStat().atk, affinity: getRandomItem(AFFINITIES), skills: [getRandomItem(SKILLS)], isAlive: true }))); } 
-    else if (num === 2) { let tHp=0, tAtk=0; for(let i=0;i<3;i++){let s=rollStat(); tHp+=s.hp; tAtk+=s.atk;} menus.forEach(menu => deck.push(applyStartStats({ id: getId(), menu, owner: playerName, maxHp: Math.floor(tHp/2), atk: Math.floor(tAtk/2), affinity: getRandomItem(AFFINITIES), skills: [getRandomItem(SKILLS)], isAlive: true }))); } 
-    else if (num === 1) { let tHp=0, tAtk=0; for(let i=0;i<3;i++){let s=rollStat(); tHp+=s.hp; tAtk+=s.atk;} deck.push(applyStartStats({ id: getId(), menu: menus[0], owner: playerName, maxHp: tHp, atk: tAtk, affinity: getRandomItem(AFFINITIES), skills: [getRandomItem(SKILLS), getRandomItem(SKILLS)], isAlive: true })); }
+
+    menus.forEach(menu => {
+        let job = getRandomItem(JOBS);
+        let grade = getRandomItem(GRADES);
+        let baseHp = rollStat().hp;
+        let baseAtk = rollStat().atk;
+
+        deck.push(applyStartStats({ 
+            id: getId(), 
+            menu: menu, 
+            owner: playerName, 
+            grade: grade.name,
+            gradeColor: grade.color,
+            job: job.name,
+            maxHp: Math.floor(baseHp * grade.multi) + job.hpBonus, 
+            atk: Math.floor(baseAtk * grade.multi) + job.atkBonus,
+            maxMp: job.maxMp,
+            mp: job.maxMp,
+            affinity: getRandomItem(AFFINITIES), 
+            skills: [getRandomItem(SKILLS)], // 무조건 1개만 부여
+            isAlive: true 
+        }));
+    });
     return deck;
 }
 
