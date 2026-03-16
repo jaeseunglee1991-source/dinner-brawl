@@ -27,10 +27,13 @@ const JOBS = [
     { name: '암살자', hpBonus: -5, atkBonus: 6, maxMp: 30 }, { name: '요리사', hpBonus: 10, atkBonus: 1, maxMp: 20 }
 ];
 
+// ⭐ 등급별 출현 확률 설정 (신화 1%, 전설 5%, 영웅 10%, 희귀 20%, 일반 64%)
 const GRADES = [
-    { name: '일반', multi: 1.0, color: '#bdc3c7' }, { name: '희귀', multi: 1.2, color: '#3498db' },
-    { name: '영웅', multi: 1.5, color: '#9b59b6' }, { name: '전설', multi: 2.0, color: '#f1c40f' },
-    { name: '신화', multi: 3.0, color: '#e74c3c' }
+    { name: '신화', multi: 3.0, color: '#e74c3c', prob: 1 },
+    { name: '전설', multi: 2.0, color: '#f1c40f', prob: 5 },
+    { name: '영웅', multi: 1.5, color: '#9b59b6', prob: 10 },
+    { name: '희귀', multi: 1.2, color: '#3498db', prob: 20 },
+    { name: '일반', multi: 1.0, color: '#bdc3c7', prob: 64 }
 ];
 
 module.exports = { AFFINITIES, SKILLS, JOBS, GRADES };
