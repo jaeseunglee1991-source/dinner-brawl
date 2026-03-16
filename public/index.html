@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>저녁 메뉴 3D 대난투</title>
     <link rel="stylesheet" href="/css/style.css">
-    
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -93,15 +92,18 @@
             </div>
         </div>
 
-        <div style="position: relative; height: 0;">
-            <button class="toggle-btn" onclick="toggleRightPanel()">▶ 정보창 접기/펴기</button>
-        </div>
-
         <div class="bottom-container">
+            <button class="toggle-btn" onclick="toggleRightPanel()">▶ 정보창 접기/펴기</button>
+
             <div class="panel chat-panel">
-                <h3>💬 실시간 채팅</h3>
-                <div id="playerList" style="font-size: 13px; color:#bdc3c7; margin-bottom:5px;"></div>
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #7f8c8d; padding-bottom: 5px; margin-bottom: 5px;">
+                    <h3 style="margin: 0; border: none; padding: 0;">💬 실시간 채팅</h3>
+                    <span id="playerCount" style="font-size: 12px; color: #f1c40f;"></span>
+                </div>
+                <div id="playerList" style="font-size: 13px; color:#bdc3c7; margin-bottom:10px; background: #2c3e50; padding: 5px; border-radius: 3px;"></div>
+                
                 <div id="chatMessages"></div>
+                
                 <div class="chat-input-area">
                     <input type="text" id="chatInput" placeholder="채팅 입력..." onkeypress="if(event.key==='Enter') sendChat()">
                     <button onclick="sendChat()">전송</button>
@@ -116,9 +118,10 @@
             <div class="panel right-panel" id="rightPanel">
                 <h3>🎴 특수 기술/상성/직업/등급</h3>
                 <div class="guide-buttons">
-                    <button class="guide-btn" onclick="openDict('job')">🛡️ 직업 도감</button>
-                    <button class="guide-btn" onclick="openDict('grade')">⭐ 등급 도감</button>
-                    <button class="guide-btn" onclick="openDict('skill')">🔥 상성/기술</button>
+                    <button class="guide-btn" onclick="openDict('job')">🛡️ 직업</button>
+                    <button class="guide-btn" onclick="openDict('grade')">⭐ 등급</button>
+                    <button class="guide-btn" onclick="openDict('affinity')" style="background-color: #e67e22;">🎭 상성</button>
+                    <button class="guide-btn" onclick="openDict('skill')" style="background-color: #e74c3c;">✨ 기술</button>
                 </div>
                 <h3 style="border:none; border-top: 1px solid #7f8c8d; padding-top:10px; margin-top:5px;">📋 카드 정보 판 (클릭)</h3>
                 <div id="cardList"></div>
