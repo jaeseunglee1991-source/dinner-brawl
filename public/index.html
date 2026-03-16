@@ -9,7 +9,7 @@
         body { font-family: 'Malgun Gothic', sans-serif; background-color: #2c3e50; margin: 0; padding: 10px; color: white; overflow-x: hidden; }
         h1 { text-align: center; margin: 10px 0; color: #ecf0f1; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); font-size: 26px; }
         
-        .screen { display: none; max-width: 600px; margin: 30px auto; background: white; color: #333; padding: 25px; border-radius: 10px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .screen { display: none; max-width: 600px; margin: 30px auto; background: white; color: #333; padding: 25px; border-radius: 10px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); position: relative; }
         .screen.active { display: block; }
         
         input { width: 90%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; box-sizing: border-box; }
@@ -19,8 +19,8 @@
         .btn-orange { background-color: #e67e22; } .btn-orange:hover { background-color: #d35400; }
         .btn-gray { background-color: #7f8c8d; } .btn-gray:hover { background-color: #616a6b; }
         .btn-red { background-color: #c0392b; } .btn-red:hover { background-color: #922b21; }
+        .btn-logout { position: absolute; top: 20px; right: 20px; background-color: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         
-        /* 텍스트 링크 스타일 */
         .text-link { color: #2980b9; cursor: pointer; text-decoration: underline; font-size: 14px; margin-top: 15px; display: inline-block; }
 
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
@@ -49,8 +49,9 @@
 
         .card-item { background: #ecf0f1; color: #333; padding: 10px; margin-bottom: 10px; border-radius: 8px; border-left: 5px solid #e74c3c; text-align: left; font-size: 14px; }
         .card-item.dead { opacity: 0.5; filter: grayscale(100%); text-decoration: line-through; border-left-color: #7f8c8d; }
-        .master-btn { padding: 15px; background-color: #e74c3c; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin: 0 5px; }
-        .bottom-buttons { position: absolute; bottom: 20px; z-index: 20; display: flex; gap: 10px; }
+        .action-btn { padding: 12px; background-color: #e74c3c; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin: 0 5px; transition: 0.2s; }
+        .action-btn:hover { transform: scale(1.05); }
+        .bottom-buttons { position: absolute; bottom: 20px; z-index: 20; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
     </style>
 </head>
 <body>
@@ -60,7 +61,7 @@
         <div id="login-form">
             <h2>🔑 로그인</h2>
             <input type="text" id="l_id" placeholder="아이디">
-            <input type="password" id="l_pw" placeholder="비밀번호">
+            <input type="password" id="l_pw" placeholder="비밀번호" onkeypress="if(event.key==='Enter') doLogin()">
             <button class="btn btn-blue" onclick="doLogin()">로그인</button>
             <span class="text-link" onclick="toggleAuth('register')">계정이 없으신가요? 회원가입하기</span>
         </div>
@@ -68,13 +69,14 @@
             <h2>📝 회원가입</h2>
             <input type="text" id="r_id" placeholder="아이디">
             <input type="password" id="r_pw" placeholder="비밀번호">
-            <input type="text" id="r_nick" placeholder="게임에서 쓸 닉네임 (별명)">
+            <input type="text" id="r_nick" placeholder="게임에서 쓸 닉네임 (별명)" onkeypress="if(event.key==='Enter') doRegister()">
             <button class="btn btn-green" onclick="doRegister()">가입하기</button>
             <span class="text-link" onclick="toggleAuth('login')">이미 계정이 있으신가요? 로그인하기</span>
         </div>
     </div>
 
     <div id="screen-lobby" class="screen">
+        <button class="btn-logout" onclick="doLogout()">로그아웃</button>
         <h2>멀티플레이 로비</h2>
         <p id="welcomeMsg" style="color: #2980b9; font-weight: bold;"></p>
         <button class="btn btn-blue" onclick="showScreen('screen-create')">새 게임방 만들기</button>
@@ -86,7 +88,7 @@
         <input type="text" id="c_roomName" placeholder="게임방 명칭 (필수)">
         <input type="password" id="c_roomPw" placeholder="방 패스워드 (선택사항)">
         <hr>
-        <p style="font-size:14px; color:#555;">먹고싶은 메뉴를 입력하세요 (이름은 계정정보 연동)</p>
+        <p style="font-size:14px; color:#555;">먹고싶은 메뉴를 입력하세요</p>
         <input type="text" id="c_menu1" placeholder="메뉴 1 (필수) ex) 피자">
         <input type="text" id="c_menu2" placeholder="메뉴 2 (선택)">
         <input type="text" id="c_menu3" placeholder="메뉴 3 (선택)">
@@ -112,7 +114,7 @@
         <input type="text" id="j_menu2" placeholder="메뉴 2 (선택)">
         <input type="text" id="j_menu3" placeholder="메뉴 3 (선택)">
         <button class="btn btn-green" onclick="joinRoom()">전장 입장</button>
-        <button class="btn btn-gray" onclick="showScreen('screen-roomlist')">취소</button>
+        <button class="btn btn-gray" onclick="cancelJoin()">취소 및 뒤로 가기</button>
     </div>
 
     <div id="screen-game" class="screen" id="gameUI">
@@ -133,8 +135,10 @@
                 <div class="canvas-overlay" id="roundText">대기 중...</div>
                 <canvas id="gameCanvas"></canvas>
                 <div class="bottom-buttons">
-                    <button id="startBtn" class="master-btn" style="display:none;" onclick="startGame()">⚔️ 대난투 시작</button>
-                    <button id="deleteBtn" class="master-btn" style="background-color: #8e44ad; display:none;" onclick="reqDeleteRoom()">💣 방 폭파</button>
+                    <button id="startBtn" class="action-btn" style="display:none; background-color:#27ae60;" onclick="startGame()">⚔️ 대난투 시작</button>
+                    <button id="copyLinkBtn" class="action-btn" style="display:none; background-color:#f39c12;" onclick="copyRoomLink()">🔗 초대 링크 복사</button>
+                    <button id="deleteBtn" class="action-btn" style="display:none; background-color:#8e44ad;" onclick="reqDeleteRoom()">💣 방 폭파</button>
+                    <button id="leaveBtn" class="action-btn" style="display:none; background-color:#7f8c8d;" onclick="leaveRoomUI()">🚪 나가기</button>
                 </div>
             </div>
 
@@ -144,7 +148,7 @@
                     <summary style="font-size: 14px;">🔄 30대 특수기술 & 상성 도감</summary>
                     <div style="font-size: 12px; text-align: left; margin-top: 5px; max-height: 150px; overflow-y: auto;">
                         <b style="color:#e74c3c">매콤</b> > 느끼 > 깔끔 > 짭짤 > 달콤 > 매콤<br>
-                        <b style="color:#3498db">⭐특수(민트초코, 파인애플):</b> 일반공격 2배, 서로 만나면 즉사 폭발!<br><br>
+                        <b style="color:#3498db">⭐특수(민트초코, 파인애플):</b> 일반공격 2배, 만나면 즉사!<br><br>
                         <b>[버프 20종]</b> 크리티컬(2배), 흡혈(50%), 더블어택(2타), 자이언트킬러(강자1.5배), 광분(공격시 공+2), 철권(최소10뎀), 스나이퍼(3배크리), 뱀파이어(100%흡혈), 일진(약자1.5배), 버서커(체력반이하 2배), 탱커(체력+20), 소드마스터(공+5), 닌자(회피30%), 쉴드(피해반감), 힐러(아군힐), 럭키(77% +7뎀), 가디언(방어15%), 콤보(때릴때마다 공+1), 매지션(방관20뎀), 불사조(1회부활)<br><br>
                         <b>[디버프 10종]</b> 덜렁이(빗나감30%), 카미카제(자폭), 허약(체력-10), 솜주먹(공반토막), 알러지(자해3), 겁쟁이(쫄아서스킵), 저주(피해1.5배), 게으름(50%스킵), 장님(빗나감50%), 종이방패(피해+5)
                     </div>
@@ -160,6 +164,7 @@
         let myUserId = "", myNickname = "", isAdmin = false;
         let myRoomId = "", selectedRoomId = "", selectedRoomRequiresPw = false;
         let playersData = [];
+        let initialRouteHandled = false; // 딥링크 처리용 플래그
         
         // --- 화면 제어 ---
         function showScreen(id) {
@@ -171,7 +176,7 @@
             }
         }
 
-        // --- 계정 로그인 / 가입 ---
+        // --- 계정 로그인 / 가입 / 로그아웃 ---
         function toggleAuth(type) {
             document.getElementById('login-form').style.display = type === 'login' ? 'block' : 'none';
             document.getElementById('register-form').style.display = type === 'register' ? 'block' : 'none';
@@ -186,22 +191,32 @@
             if(!id || !pw) return alert('ID와 PW를 입력하세요.');
             socket.emit('login', { id, pw });
         }
+        function doLogout() {
+            if(confirm('로그아웃 하시겠습니까?')) {
+                // 파라미터를 초기화하고 페이지를 새로고침하여 가장 깔끔하게 로그아웃
+                window.location.href = window.location.pathname;
+            }
+        }
 
         socket.on('errorMsg', msg => alert(msg));
         socket.on('authSuccess', msg => { alert(msg); toggleAuth('login'); });
+        
         socket.on('loginSuccess', data => {
             myUserId = data.userId; myNickname = data.nickname; isAdmin = data.isAdmin;
             let icon = isAdmin ? '👑관리자' : '👤';
             document.getElementById('welcomeMsg').innerText = `${icon} ${myNickname}님 환영합니다!`;
-            
-            // 어드민 계정일 경우 폭파 권한 컬럼 보이기
             if(isAdmin) document.querySelectorAll('.adminCol').forEach(el => el.style.display = 'table-cell');
-            showScreen('screen-lobby');
+            
+            // 여기서 화면 전환을 하지 않고, 직후에 오는 'updateRoomList'에서 딥링크 여부를 판단해 화면을 넘깁니다.
         });
 
-        socket.on('kicked', msg => { alert(msg); showScreen('screen-lobby'); });
+        socket.on('kicked', msg => { 
+            alert(msg); 
+            history.replaceState(null, '', window.location.pathname); // url 파라미터 지우기
+            showScreen('screen-lobby'); 
+        });
 
-        // --- 방 리스트 및 입장 ---
+        // --- 방 리스트 및 딥링크(Sub URL) 입장 ---
         socket.on('updateRoomList', (list) => {
             const tbody = document.getElementById('roomTableBody');
             tbody.innerHTML = '';
@@ -217,6 +232,26 @@
                     </tr>
                 `;
             });
+
+            // ⭐️ 로그인 직후 다이렉트 초대 링크(딥링크) 접속 처리 ⭐️
+            if (myUserId && !initialRouteHandled) {
+                initialRouteHandled = true;
+                const urlParams = new URLSearchParams(window.location.search);
+                const targetRoomId = urlParams.get('room');
+                
+                if (targetRoomId) {
+                    const room = list.find(r => r.id === targetRoomId);
+                    if (room) {
+                        selectRoomToJoin(room.id, room.name, room.hasPassword, room.state);
+                    } else {
+                        alert('초대받은 방이 이미 종료되었거나 존재하지 않습니다.');
+                        history.replaceState(null, '', window.location.pathname);
+                        showScreen('screen-lobby');
+                    }
+                } else {
+                    showScreen('screen-lobby');
+                }
+            }
         });
 
         window.selectRoomToJoin = function(id, name, hasPw, state) {
@@ -226,6 +261,12 @@
             document.getElementById('j_roomPw').style.display = hasPw ? 'block' : 'none';
             showScreen('screen-join');
         };
+
+        function cancelJoin() {
+            // 초대 링크로 들어왔다가 취소할 경우 URL 정리 후 로비로 이동
+            history.replaceState(null, '', window.location.pathname);
+            showScreen('screen-lobby');
+        }
 
         function createRoom() {
             let name = document.getElementById('c_roomName').value.trim(); let pw = document.getElementById('c_roomPw').value.trim();
@@ -241,14 +282,37 @@
             socket.emit('joinRoom', { roomId: selectedRoomId, password: pw, menus });
         }
 
-        // --- 방 폭파 요청 ---
+        // --- 초대 링크 복사 ---
+        window.copyRoomLink = function() {
+            const url = window.location.origin + window.location.pathname + '?room=' + myRoomId;
+            // 모바일 환경에서도 작동하도록 클립보드 API 사용
+            navigator.clipboard.writeText(url).then(() => {
+                alert('초대 링크가 복사되었습니다!\n카톡방에 붙여넣기 하세요.');
+            }).catch(err => {
+                alert('링크 복사에 실패했습니다. 주소창을 직접 복사해주세요.');
+            });
+        };
+
+        // --- 방 폭파 및 나가기 ---
         window.deleteRoom = function(id) { if(confirm('정말 이 방을 강제 폭파하시겠습니까?')) socket.emit('deleteRoom', id); };
         window.reqDeleteRoom = function() { if(confirm('내 게임 방을 해체하시겠습니까?')) socket.emit('deleteRoom', myRoomId); };
+        window.leaveRoomUI = function() { 
+            history.replaceState(null, '', window.location.pathname); 
+            window.location.reload(); // 방 나가기는 가장 깔끔하게 새로고침 처리
+        };
 
         socket.on('joined', (data) => {
             myRoomId = data.roomId;
+            
+            // 브라우저 URL에 '?room=코드' 삽입 (새로고침 없이)
+            history.pushState(null, '', '?room=' + data.roomId);
+            
+            // 하단 버튼들 표시 제어
             document.getElementById('startBtn').style.display = data.isMaster ? 'block' : 'none';
-            document.getElementById('deleteBtn').style.display = data.isMaster ? 'block' : 'none'; // 방장에게 폭파 버튼 표시
+            document.getElementById('deleteBtn').style.display = data.isMaster ? 'block' : 'none'; 
+            document.getElementById('copyLinkBtn').style.display = 'block'; 
+            document.getElementById('leaveBtn').style.display = 'block'; 
+
             showScreen('screen-game');
         });
 
@@ -265,7 +329,7 @@
             chatBox.scrollTop = chatBox.scrollHeight;
         });
 
-        window.startGame = function() { socket.emit('startGame', myRoomId); document.getElementById('startBtn').style.display = 'none'; }
+        window.startGame = function() { socket.emit('startGame', myRoomId); document.getElementById('startBtn').style.display = 'none'; document.getElementById('copyLinkBtn').style.display = 'none'; }
 
         // --- 2D 캔버스 엔진 ---
         const canvas = document.getElementById('gameCanvas'); const ctx = canvas.getContext('2d');
