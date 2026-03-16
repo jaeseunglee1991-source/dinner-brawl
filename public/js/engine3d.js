@@ -2,7 +2,6 @@
 
 let projectiles = [];
 
-// 🛑 전장 이탈 방지용 좌표 보정 함수
 function clampToArena(x, z, maxRadius = 14) {
     let dist = Math.sqrt(x*x + z*z);
     if (dist > maxRadius) {
@@ -19,9 +18,10 @@ window.handle3DUpdatePlayers = function(data) {
     data.players.forEach(p => {
         p.deck.forEach(c => {
             if(!entities[c.id]) {
-                let startX = (Math.random() - 0.5) * 16; // 스폰 반경도 줄임
+                let startX = (Math.random() - 0.5) * 16; 
                 let startZ = (Math.random() - 0.5) * 16;
-                let startY = window.getTerrainHeight ? window.getTerrainHeight(startX, startZ) + 1.2 : 1.2;
+                // ⭐️ 수정됨: 이제 캐릭터의 발바닥이 기준이므로, 지형의 높이(h)에 정확히 맞춤
+                let startY = window.getTerrainHeight ? window.getTerrainHeight(startX, startZ) : 0;
 
                 entities[c.id] = { 
                     id: c.id, menu: c.menu, job: c.job, isAlive: c.isAlive, color: c.gradeColor, 
@@ -41,7 +41,9 @@ function applyDamageEffect(ev, target) {
     let text = ev.damage >= 9999 ? "💥즉사!" : (ev.damage === 0 ? "빗나감" : `-${ev.damage}`);
     let color = ev.isCrit ? "#ff4757" : (ev.damage >= 9999 ? "#ff7f50" : "#ffffff");
     if(meshMap[ev.targetId]) {
-        showDamageText(meshMap[ev.targetId], text, color, ev.isCrit);
+        // 데미지 이펙트 함수 호출 (effect.js 에서 처리)
+        if(typeof showDamageText === 'function') showDamageText(meshMap[ev.targetId], text, color, ev.isCrit);
+        
         meshMap[ev.targetId].position.y += 0.8;
         setTimeout(() => {
             if(meshMap[ev.targetId]) meshMap[ev.targetId].position.y -= 0.8;
@@ -64,7 +66,6 @@ window.handlePlayBrawlAnimation = function(attackEvents) {
                 let newX = attacker.baseX + dx * 0.15;
                 let newZ = attacker.baseZ + dz * 0.15;
                 
-                // 전장 밖으로 나가지 않게 클램프
                 let clamped = clampToArena(newX, newZ);
                 attacker.targetX = clamped.x;
                 attacker.targetZ = clamped.z;
@@ -76,8 +77,10 @@ window.handlePlayBrawlAnimation = function(attackEvents) {
 
                 setTimeout(() => {
                     let projMesh = createProjectileMesh(job);
-                    let startY = (window.getTerrainHeight ? window.getTerrainHeight(attacker.baseX, attacker.baseZ) : 0) + 2.5;
-                    let targetY = (window.getTerrainHeight ? window.getTerrainHeight(target.baseX, target.baseZ) : 0) + 1.5;
+                    
+                    // ⭐️ 수정됨: 투사체는 발바닥(Y=0)이 아니라 캐릭터 가슴팍 높이(+1.8)에서 발사
+                    let startY = (window.getTerrainHeight ? window.getTerrainHeight(attacker.baseX, attacker.baseZ) : 0) + 1.8;
+                    let targetY = (window.getTerrainHeight ? window.getTerrainHeight(target.baseX, target.baseZ) : 0) + 1.8;
                     
                     projMesh.position.set(attacker.baseX, startY, attacker.baseZ);
                     scene.add(projMesh);
@@ -108,7 +111,6 @@ window.handlePlayBrawlAnimation = function(attackEvents) {
                     newZ = attacker.baseZ;
                 }
                 
-                // 전장 밖으로 나가지 않게 클램프
                 let clamped = clampToArena(newX, newZ);
                 attacker.targetX = clamped.x;
                 attacker.targetZ = clamped.z;
@@ -142,7 +144,6 @@ function gameLoop() {
 
         if(!meshMap[e.id]) {
             const charModel = createDetailedCharacter(e.job, e.color);
-            charModel.scale.set(1.8, 1.8, 1.8);
             scene.add(charModel); 
             meshMap[e.id] = charModel;
         }
@@ -152,15 +153,23 @@ function gameLoop() {
         if(e.targetX !== undefined) e.x += (e.targetX - e.x) * 0.05;
         if(e.targetZ !== undefined) e.z += (e.targetZ - e.z) * 0.05;
         
-        let targetHeight = window.getTerrainHeight ? window.getTerrainHeight(e.x, e.z) + 1.2 : 1.2;
-        e.y = e.y || targetHeight;
-        e.y += (targetHeight - e.y) * 0.15; 
+        // ⭐️ 수정됨: 지형의 높이(h)가 곧 캐릭터가 서야 할 정확한 바닥 위치입니다
+        let targetHeight = window.getTerrainHeight ? window.getTerrainHeight(e.x, e.z) : 0;
+        
+        // y값이 NaN이거나 지정되지 않았으면 바닥 높이로 초기화
+        if (e.y === undefined || isNaN(e.y)) e.y = targetHeight;
+        
+        // 계단을 부드럽게 오르내리는 보간 효과
+        e.y += (targetHeight - e.y) * 0.2; 
         
         let isMoving = Math.abs(e.targetX - e.x) > 0.1 || Math.abs(e.targetZ - e.z) > 0.1;
         let jumpY = isMoving ? Math.abs(Math.sin(time * 4)) * 0.6 : Math.sin(time * 1.5 + e.x) * 0.05;
         
+        // 최종적으로 Y축에 점프 높이만 더해서 세팅
         mesh.position.set(e.x, e.y + jumpY, e.z);
         
+        // 전투 모션
+        // (참고: wrapper를 돌리므로 내부 group이 회전합니다)
         if (e.isAttacking === 'melee') {
             mesh.rotation.y = Math.atan2(e.x - e.baseX, e.z - e.baseZ);
             if (e.job === '탱커') { mesh.rotation.x = Math.PI / 4; } 
@@ -177,6 +186,7 @@ function gameLoop() {
         }
     });
     
+    // 투사체 처리
     for (let i = projectiles.length - 1; i >= 0; i--) {
         let p = projectiles[i];
         p.progress += 0.03; 
