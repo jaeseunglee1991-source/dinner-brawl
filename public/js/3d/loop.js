@@ -1,13 +1,11 @@
 // public/js/3d/loop.js
 
-// 이전 프레임과의 시간 차이를 계산하기 위한 시계
 const clock = new THREE.Clock();
 
 function gameLoop() {
     requestAnimationFrame(gameLoop);
     if (!scene || !camera || !renderer) return;
 
-    // ⭐️ 애니메이션 재생을 위한 델타 타임(프레임 간 시간 차이)
     const delta = clock.getDelta();
     const time = Date.now() * 0.003;
 
@@ -25,7 +23,7 @@ function gameLoop() {
 
         let mesh = meshMap[e.id];
         
-        // ⭐️ 추가됨: Mixamo 애니메이션 믹서가 있다면 프레임 업데이트
+        // ⭐️ 애니메이션 재생기 업데이트
         if (mesh.userData.mixer) {
             mesh.userData.mixer.update(delta);
         }
@@ -41,9 +39,25 @@ function gameLoop() {
         if (e.y === undefined || isNaN(e.y)) e.y = targetHeight;
         e.y += (targetHeight - e.y) * 0.2; 
         
-        // Mixamo 모델은 자체적으로 뛰는 애니메이션이 있으므로 강제 점프(jumpY)를 비활성화합니다.
+        let isMoving = Math.abs(e.targetX - e.x) > 0.1 || Math.abs(e.targetZ - e.z) > 0.1;
+        
+        // ⭐️ 추가됨: 애니메이션 상태 결정 머신 (State Machine)
+        let currentState = 'Idle';
+        if (e.isAttacking) {
+            currentState = 'Attack';
+        } else if (isMoving) {
+            currentState = 'Run';
+        }
+
+        // 캐릭터 모델에 상태 변경 지시
+        if (mesh.userData.changeState) {
+            mesh.userData.changeState(currentState);
+        }
+        
+        // 3D 모델 자체에 내장된 걷기 애니메이션을 쓰므로 강제 점프(jumpY)는 제거함
         mesh.position.set(e.x, e.y, e.z);
         
+        // 방향 회전 로직
         if (e.isAttacking === 'heavy_melee') {
             mesh.rotation.y = Math.atan2(e.x - e.baseX, e.z - e.baseZ);
         } else if (e.isAttacking === 'shield_bash') {
@@ -55,13 +69,13 @@ function gameLoop() {
         } else if (e.isAttacking === 'fast_ranged') {
             mesh.rotation.y = Math.atan2(e.targetX - e.baseX, e.targetZ - e.baseZ);
         } else {
-            if (Math.abs(e.targetX - e.x) > 0.1 || Math.abs(e.targetZ - e.z) > 0.1) { 
+            if (isMoving) { 
                 mesh.rotation.y = Math.atan2(e.targetX - e.x, e.targetZ - e.z); 
             }
         }
     });
     
-    // 투사체 처리 (유지)
+    // 투사체 처리 로직 (유지)
     for (let i = projectiles.length - 1; i >= 0; i--) {
         let p = projectiles[i];
         if (p.job === '궁수' || p.job === '암살자') p.progress += 0.06; 
@@ -88,4 +102,3 @@ function gameLoop() {
     }
     renderer.render(scene, camera);
 }
-gameLoop();
