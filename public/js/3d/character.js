@@ -13,7 +13,7 @@ function createDetailedCharacter(job, gradeColor) {
     wrapper.add(dummyMesh);
 
     // ⭐️ Step 2에서 저장한 파일 경로를 적어줍니다.
-    const modelPath = '/models/idle.glb';
+    const modelPath = '/models/idle_Ninja.glb';
 
     gltfLoader.load(modelPath, (gltf) => {
         const model = gltf.scene;
